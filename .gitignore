@@ -1,0 +1,34 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+.next/
+.turbo/
+bin/
+*.tsbuildinfo
+
+# runtime data
+data/
+*.log
+
+# env
+.env
+.env.local
+.env.*.local
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# local claude settings (keep launch.json, ignore personal settings)
+.claude/settings.local.json
+.claude/settings.json

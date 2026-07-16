@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "relay",
+      "runtimeExecutable": "go",
+      "runtimeArgs": ["run", "atelier.dev/services/collab-relay/cmd/collab-relay"],
+      "port": 8787
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@atelier/web", "dev"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "web-prod",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@atelier/web", "start"],
+      "port": 3200,
+      "autoPort": true
+    }
+  ]
+}
