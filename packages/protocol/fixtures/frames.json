@@ -1,0 +1,41 @@
+{
+  "description": "Golden vectors for the WS frame codec. wire = wireHeaderHex + (payloadRepeatHex * payloadRepeatCount). Implemented by packages/protocol (TS) and services/collab-relay/internal/wsproto (Go); both test suites load this file.",
+  "vectors": [
+    {
+      "name": "ctrl_small_payload",
+      "channel": 1,
+      "flags": 0,
+      "streamId": 0,
+      "payloadRepeatHex": "6869",
+      "payloadRepeatCount": 1,
+      "wireHeaderHex": "0100000002"
+    },
+    {
+      "name": "crdt_compact_flag_two_byte_varint",
+      "channel": 2,
+      "flags": 8,
+      "streamId": 7,
+      "payloadRepeatHex": "ab",
+      "payloadRepeatCount": 130,
+      "wireHeaderHex": "020800078201"
+    },
+    {
+      "name": "aware_empty_payload_max_stream",
+      "channel": 3,
+      "flags": 0,
+      "streamId": 65535,
+      "payloadRepeatHex": "",
+      "payloadRepeatCount": 0,
+      "wireHeaderHex": "0300ffff00"
+    },
+    {
+      "name": "pty_varint_boundary_127",
+      "channel": 4,
+      "flags": 0,
+      "streamId": 1,
+      "payloadRepeatHex": "00",
+      "payloadRepeatCount": 127,
+      "wireHeaderHex": "040000017f"
+    }
+  ]
+}
