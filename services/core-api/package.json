@@ -1,0 +1,11 @@
+{
+  "name": "@atelier/core-api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "go build ./...",
+    "test": "go test ./...",
+    "lint": "go vet ./...",
+    "dev": "go run ./cmd/core-api"
+  }
+}
