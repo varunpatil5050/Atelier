@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # Relay + core-api run on the host via `go run`; reach them from inside the
+  # compose network through host.docker.internal.
+  - job_name: collab-relay
+    static_configs:
+      - targets: ["host.docker.internal:8787"]
+  - job_name: core-api
+    static_configs:
+      - targets: ["host.docker.internal:8788"]

@@ -1,0 +1,82 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "title": "Atelier — Dev Overview",
+  "uid": "atelier-dev",
+  "tags": ["atelier"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "time": { "from": "now-15m", "to": "now" },
+  "refresh": "5s",
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Live connections",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }] } } },
+      "targets": [{ "expr": "sum(relay_connections)", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Live rooms",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "sum(relay_rooms)", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "WS RTT p95 (RUM)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms", "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 120 }, { "color": "red", "value": 300 }] } } },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(rum_ws_rtt_ms_bucket[5m])) by (le))", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "core-api p95",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_ms_bucket[5m])) by (le))", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Frames received / sec by channel",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" } } } },
+      "targets": [{ "expr": "sum by (channel) (rate(relay_frames_in_total[1m]))", "legendFormat": "{{channel}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Broadcast fan-out / sec",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [{ "expr": "sum(rate(relay_broadcast_sends_total[1m]))", "legendFormat": "sends", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "WS RTT p50 / p95 (RUM)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(rum_ws_rtt_ms_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(rum_ws_rtt_ms_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Health events / sec (kicks, compactions)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "expr": "sum(rate(relay_slow_client_kicks_total[5m]))", "legendFormat": "slow-client kicks", "refId": "A" },
+        { "expr": "sum(rate(relay_log_compactions_total[5m]))", "legendFormat": "log compactions", "refId": "B" }
+      ]
+    }
+  ]
+}
