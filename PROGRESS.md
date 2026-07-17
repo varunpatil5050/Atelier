@@ -25,8 +25,8 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
 |---|---|---|
 | Indexer v0 (symbols + search) | ✅ 2026-07-17 | see row 10 above |
 | Reference/call edges + code graph | ✅ 2026-07-18 | indexer now extracts call sites in one tree walk (enclosing-function stack → `in_symbol`; callee reduced through member/selector/attribute access) for TS/TSX/JS/Py/Go; name-based call graph with honest `heuristic` confidence; `/v1/refs?name=` returns callers + 1-hop blast-radius summary (count + distinct files); IDE find-references flow (click symbol → callers list "N calls across M files" → click caller → editor navigates). 11 cargo tests (+3 ref extraction/aggregation) + clippy clean. Live-verified: `greet` showed 3 callers with enclosing fns, clicked through to a call site, added a 4th caller via CRDT → re-indexed in the debounce → count updated to 4 |
-| Embeddings + hybrid retrieval | ⬜ | pgvector, chunker, RRF fusion |
-| conductor (agents) + model-gateway | ⬜ | the autonomous-agent system (blueprint doc 07) |
+| Embeddings + hybrid retrieval | ✅ 2026-07-18 | AST-aware chunker (one chunk per symbol + context header "path·lang·scope·name"; whole-file fallback); deterministic `HashEmbedder` behind an `Embedder` trait (feature-hashing over camel/snake/acronym-split tokens, L2-normalized — no external calls; model-gateway is the future seam); in-memory vector store (brute-force cosine); RRF hybrid `/v1/retrieve` fusing semantic + lexical with `why[]` provenance; IDE gains a symbols\|content toggle — content mode finds code by what it does, with SEMANTIC/LEXICAL badges. 19 cargo tests (+6: tokenizer, embedding determinism/similarity, chunking, hybrid) + clippy clean. Live-verified: "network connection port" surfaced TcpSocket+connect by their body (not name), excluded unrelated auth code, clicked through to the editor |
+| conductor (agents) + model-gateway | ⬜ next | the autonomous-agent system (blueprint doc 07) — the payoff the retrieval stack was built for |
 
 ### Increment 2 additions (2026-07-15)
 
@@ -56,6 +56,13 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
   doc 06 §3 prescribes: consumers (and later the Reviewer agent) treat `heuristic` edges as
   hints to verify, not proof. Scope-aware resolution + reverse (defs→refs by span) upgrade
   the tier later. Blast radius is 1-hop (direct callers); transitive arrives with the graph.
+- **Embeddings: deterministic HashEmbedder + in-memory brute-force, not a model + pgvector/HNSW**
+  — the `Embedder` trait is the seam: a feature-hashing embedder (dependency-free, deterministic,
+  testable) stands in for a real code-embedding model behind the model-gateway (doc 02 §3); an
+  in-memory brute-force cosine store stands in for pgvector→Qdrant (doc 06 §5/§6). Both are fine
+  at workspace scale and swap out behind `retrieve()`/`Embedder`. Because it's token-overlap
+  based, it captures content similarity (find code by body), not true synonymy — that arrives
+  with a real embedding model.
 - **Execution: Docker container, not gVisor/Firecracker** — the Runtime interface is the seam
   (host→docker now; gVisor→Firecracker later, blueprint doc 05 §2). v0 limits: one container
   per workspace-host process, cleaned up on graceful SIGTERM (deferred close → `docker rm -f`);

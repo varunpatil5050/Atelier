@@ -4,18 +4,24 @@ import { useEffect, useState } from "react";
 import {
   getReferences,
   intelReachable,
+  retrieve,
   searchSymbols,
   type Refs,
+  type RetrievedChunk,
   type SymbolHit,
 } from "../intel";
 
+type Mode = "symbols" | "content";
+
 /**
- * Sidebar symbol search + find-references, backed by the indexer service.
- * Renders nothing when the indexer isn't running — intelligence is an optional
- * plane (doc 09 §8: degraded modes are designed, not discovered).
+ * Sidebar intelligence panel backed by the indexer service. Renders nothing
+ * when the indexer isn't running — intelligence is an optional plane (doc 09
+ * §8: degraded modes are designed, not discovered).
  *
- * Clicking a symbol navigates to its definition and loads its callers (a
- * 1-hop blast radius, doc 06 §8); clicking a caller navigates there.
+ * Two modes:
+ *  - symbols: name search → definition + find-references (callers, doc 06 §8)
+ *  - content: hybrid retrieval (semantic ⊕ lexical, doc 06 §6) — finds code by
+ *    what it does, not just by symbol name.
  */
 export default function SymbolSearch({
   onOpen,
@@ -23,8 +29,10 @@ export default function SymbolSearch({
   onOpen: (path: string, line: number) => void;
 }) {
   const [available, setAvailable] = useState(false);
+  const [mode, setMode] = useState<Mode>("symbols");
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<SymbolHit[]>([]);
+  const [chunks, setChunks] = useState<RetrievedChunk[]>([]);
   const [focused, setFocused] = useState<string | null>(null);
   const [refs, setRefs] = useState<Refs | null>(null);
 
@@ -41,23 +49,31 @@ export default function SymbolSearch({
   useEffect(() => {
     if (!available || q.trim() === "") {
       setHits([]);
+      setChunks([]);
       return;
     }
+    const query = q.trim();
     const timer = setTimeout(() => {
-      searchSymbols(q.trim())
-        .then(setHits)
-        .catch(() => setHits([]));
+      if (mode === "symbols") {
+        searchSymbols(query).then(setHits).catch(() => setHits([]));
+      } else {
+        retrieve(query).then(setChunks).catch(() => setChunks([]));
+      }
     }, 150);
     return () => clearTimeout(timer);
-  }, [q, available]);
+  }, [q, mode, available]);
+
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    setFocused(null);
+    setRefs(null);
+  };
 
   const pickSymbol = (h: SymbolHit) => {
     onOpen(h.path, h.line);
     setFocused(h.name);
     setRefs(null);
-    getReferences(h.name)
-      .then(setRefs)
-      .catch(() => setRefs(null));
+    getReferences(h.name).then(setRefs).catch(() => setRefs(null));
   };
 
   if (!available) return null;
@@ -65,11 +81,25 @@ export default function SymbolSearch({
   return (
     <div className="symbol-search">
       <div className="sidebar-head">
-        <span>Symbols</span>
+        <span>Intelligence</span>
+        <div className="intel-modes">
+          <button
+            className={mode === "symbols" ? "intel-mode active" : "intel-mode"}
+            onClick={() => switchMode("symbols")}
+          >
+            symbols
+          </button>
+          <button
+            className={mode === "content" ? "intel-mode active" : "intel-mode"}
+            onClick={() => switchMode("content")}
+          >
+            content
+          </button>
+        </div>
       </div>
       <input
         className="symbol-input"
-        placeholder="search symbols…"
+        placeholder={mode === "symbols" ? "search symbols…" : "search by content…"}
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
@@ -78,7 +108,8 @@ export default function SymbolSearch({
         }}
         spellCheck={false}
       />
-      {hits.length > 0 && (
+
+      {mode === "symbols" && hits.length > 0 && (
         <ul className="symbol-results">
           {hits.map((h, i) => (
             <li key={`${h.path}:${h.line}:${h.name}:${i}`}>
@@ -101,7 +132,37 @@ export default function SymbolSearch({
         </ul>
       )}
 
-      {focused && refs && (
+      {mode === "content" && chunks.length > 0 && (
+        <ul className="symbol-results">
+          {chunks.map((c, i) => (
+            <li key={`${c.path}:${c.line}:${i}`}>
+              <button
+                className="symbol-item chunk-item"
+                onClick={() => onOpen(c.path, c.line)}
+                title={c.preview}
+              >
+                <span className="chunk-top">
+                  <span className={`sym-kind sym-kind-${c.kind}`}>{c.kind}</span>
+                  <span className="sym-name">{c.symbol ?? c.path.split("/").pop()}</span>
+                  <span className="sym-loc">
+                    {c.path.split("/").pop()}:{c.line}
+                  </span>
+                </span>
+                <span className="chunk-bottom">
+                  {c.why.map((w) => (
+                    <span key={w} className={`why-badge why-${w}`}>
+                      {w}
+                    </span>
+                  ))}
+                  <span className="chunk-preview">{c.preview}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {mode === "symbols" && focused && refs && (
         <div className="refs-panel">
           <div className="refs-head">
             {refs.count === 0 ? (

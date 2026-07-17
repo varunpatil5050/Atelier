@@ -1,9 +1,13 @@
-//! atelier-indexer: the first intelligence-plane component (blueprint doc 06).
-//! Walks a workspace, extracts symbols with tree-sitter, keeps the index
-//! fresh via file watching, and serves ranked symbol search over HTTP.
+//! atelier-indexer: the intelligence plane's structural + semantic index
+//! (blueprint doc 06). Walks a workspace, extracts symbols and call edges with
+//! tree-sitter, chunks + embeds files for semantic retrieval, keeps everything
+//! fresh via file watching, and serves symbol search, find-references, and
+//! hybrid retrieval over HTTP.
 //!
 //!   indexer --dir ./data/workspaces/demo --addr 127.0.0.1:8789
 
+mod chunk;
+mod embed;
 mod extract;
 mod index;
 mod lang;
@@ -24,7 +28,8 @@ use serde_json::json;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use walkdir::WalkDir;
 
-use crate::index::SymbolIndex;
+use crate::embed::{Embedder, HashEmbedder};
+use crate::index::{StoredChunk, SymbolIndex};
 use crate::lang::Lang;
 
 const IGNORED_DIRS: &[&str] = &[
@@ -45,6 +50,7 @@ struct App {
     dir: PathBuf,
     index: RwLock<SymbolIndex>,
     dirty: Mutex<HashSet<PathBuf>>,
+    embedder: HashEmbedder,
 }
 
 fn main() {
@@ -58,6 +64,7 @@ fn main() {
         dir: dir.clone(),
         index: RwLock::new(SymbolIndex::default()),
         dirty: Mutex::new(HashSet::new()),
+        embedder: HashEmbedder::default(),
     });
 
     // Initial full pass.
@@ -65,9 +72,12 @@ fn main() {
     let files = full_index(&app);
     let stats = app.index.read().unwrap().stats();
     println!(
-        "indexer: indexed {} files → {} symbols in {:?} (dir: {})",
+        "indexer: indexed {} files → {} symbols, {} refs, {} chunks (embed dim {}) in {:?} (dir: {})",
         files,
         stats.symbols,
+        stats.references,
+        stats.chunks,
+        app.embedder.dim(),
         started.elapsed(),
         dir.display()
     );
@@ -114,6 +124,7 @@ fn main() {
             .route("/healthz", get(health))
             .route("/v1/search", get(search))
             .route("/v1/refs", get(refs))
+            .route("/v1/retrieve", get(retrieve))
             .route("/v1/stats", get(stats_handler))
             .route("/v1/reindex", post(reindex_all))
             .layer(cors)
@@ -206,7 +217,17 @@ fn reindex_path(app: &App, abs: &Path) -> bool {
     };
 
     let parsed = extract::extract(&rel, lang, &source);
-    app.index.write().unwrap().replace_file(&rel, parsed);
+    // Chunk + embed for semantic retrieval. Embedding is CPU-only (HashEmbedder),
+    // so this stays on the indexing path; a network-backed embedder would move
+    // to a batched queue (blueprint doc 06 §5).
+    let stored: Vec<StoredChunk> = chunk::chunk_file(&rel, lang.label(), &source, &parsed.symbols)
+        .into_iter()
+        .map(|c| {
+            let v = app.embedder.embed(&c.text);
+            StoredChunk::new(c, v)
+        })
+        .collect();
+    app.index.write().unwrap().replace_file(&rel, parsed, stored);
     true
 }
 
@@ -255,12 +276,30 @@ async fn refs(
     }))
 }
 
+/// Hybrid retrieval: the endpoint agents call for "find code relevant to X"
+/// (blueprint doc 06 §6/§8). Fuses semantic + lexical rankings.
+async fn retrieve(
+    State(app): State<Arc<App>>,
+    Query(params): Query<SearchParams>,
+) -> Json<serde_json::Value> {
+    let started = Instant::now();
+    let limit = params.limit.unwrap_or(10).min(50);
+    let query_vec = app.embedder.embed(&params.q);
+    let results = app.index.read().unwrap().retrieve(&query_vec, &params.q, limit);
+    Json(json!({
+        "query": params.q,
+        "tookUs": started.elapsed().as_micros(),
+        "results": results,
+    }))
+}
+
 async fn stats_handler(State(app): State<Arc<App>>) -> Json<serde_json::Value> {
     let stats = app.index.read().unwrap().stats();
     Json(json!({
         "files": stats.files,
         "symbols": stats.symbols,
         "references": stats.references,
+        "chunks": stats.chunks,
     }))
 }
 

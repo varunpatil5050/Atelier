@@ -60,3 +60,28 @@ export async function getReferences(name: string): Promise<Refs> {
   const { refs } = (await res.json()) as { refs: Refs };
   return refs;
 }
+
+export interface RetrievedChunk {
+  path: string;
+  line: number;
+  end_line: number;
+  symbol?: string;
+  kind: string;
+  header: string;
+  preview: string;
+  score: number;
+  why: string[]; // "semantic" and/or "lexical"
+}
+
+/**
+ * Hybrid retrieval — semantic + lexical fused by RRF (doc 06 §6). Finds code
+ * by content, not just by symbol name; this is the endpoint agents will query.
+ */
+export async function retrieve(q: string, limit = 10): Promise<RetrievedChunk[]> {
+  const res = await fetch(
+    `${intelBase()}/v1/retrieve?q=${encodeURIComponent(q)}&limit=${limit}`,
+  );
+  if (!res.ok) throw new Error(`intel retrieve: ${res.status}`);
+  const { results } = (await res.json()) as { results: RetrievedChunk[] };
+  return results;
+}

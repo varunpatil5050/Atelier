@@ -15,8 +15,9 @@ terminal, and disk agree), **signed-token auth** (a control-plane `core-api` min
 short-lived room tokens; the relay verifies them and derives identity from claims, not client
 assertions), **live observability** (OTel metrics → Prometheus → a provisioned Grafana
 dashboard, including the browser-measured keystroke-RTT SLI), **repository intelligence**
-(a Rust tree-sitter indexer serving ranked symbol search that stays fresh as you type), and
-an automated Playwright multiplayer harness.
+(a Rust tree-sitter indexer serving symbol search, a call graph / find-references, and hybrid
+semantic+lexical retrieval — all staying fresh as you type), and an automated Playwright
+multiplayer harness.
 
 ## Quickstart
 

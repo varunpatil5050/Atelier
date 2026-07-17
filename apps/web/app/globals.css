@@ -334,6 +334,72 @@ button {
   outline: 1px solid var(--accent);
 }
 
+/* mode toggle (symbols | content) */
+.intel-modes {
+  display: flex;
+  gap: 2px;
+}
+.intel-mode {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.intel-mode.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
+/* content-mode (hybrid retrieval) rows */
+.chunk-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+.chunk-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.chunk-bottom {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 2px;
+}
+.why-badge {
+  flex: 0 0 auto;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 4px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+}
+.why-semantic {
+  color: #a855f7;
+  border-color: #a855f744;
+}
+.why-lexical {
+  color: #6d9eff;
+  border-color: #6d9eff44;
+}
+.chunk-preview {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
 /* find-references (code graph) */
 .refs-panel {
   margin: 4px 6px 0;
