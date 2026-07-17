@@ -14,11 +14,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"os"
-	"os/exec"
 	"sync"
 	"time"
 
@@ -31,23 +28,26 @@ import (
 type Config struct {
 	RelayURL string // e.g. ws://localhost:8787 (no /ws suffix)
 	Room     string
-	Dir      string // working directory for shells
+	Dir      string // working directory for shells (mounted into the container in docker mode)
 	Shell    string
 	Name     string // presence name shown to participants
 	// ServiceToken authenticates to a relay running with auth enforced
 	// (RELAY_SERVICE_SECRET). Empty in tokenless dev mode.
 	ServiceToken string
-	Logger       *slog.Logger
+	// Runtime selects the isolation rung: "host" (default) or "docker".
+	Runtime string
+	Docker  DockerLimits
+	Logger  *slog.Logger
 }
 
 type term struct {
-	ptmx *os.File
-	cmd  *exec.Cmd
+	session *Session
 }
 
 type Host struct {
-	cfg Config
-	log *slog.Logger
+	cfg     Config
+	log     *slog.Logger
+	runtime Runtime
 
 	mu      sync.Mutex // guards conn + terms
 	conn    *websocket.Conn
@@ -58,16 +58,22 @@ type Host struct {
 // Run connects to the relay and serves PTYs until ctx is cancelled,
 // reconnecting with backoff. Shells survive relay reconnects.
 func Run(ctx context.Context, cfg Config) error {
-	if cfg.Shell == "" {
-		cfg.Shell = os.Getenv("SHELL")
-	}
-	if cfg.Shell == "" {
-		cfg.Shell = "/bin/sh"
-	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	h := &Host{cfg: cfg, log: cfg.Logger.With("room", cfg.Room), terms: make(map[uint16]*term)}
+	logger := cfg.Logger.With("room", cfg.Room)
+
+	var runtime Runtime
+	switch cfg.Runtime {
+	case "docker":
+		runtime = NewDockerRuntime(cfg.Dir, cfg.Shell, cfg.Docker, logger)
+	case "", "host":
+		runtime = NewHostRuntime(cfg.Shell, cfg.Dir)
+	default:
+		return fmt.Errorf("unknown runtime %q (want host|docker)", cfg.Runtime)
+	}
+
+	h := &Host{cfg: cfg, log: logger, runtime: runtime, terms: make(map[uint16]*term)}
 	defer h.closeAll()
 
 	delay := time.Second
@@ -160,7 +166,7 @@ func (h *Host) handleFrame(f wire.Frame) {
 		t := h.terms[f.StreamID]
 		h.mu.Unlock()
 		if t != nil {
-			_, _ = t.ptmx.Write(f.Payload)
+			_, _ = t.session.Pty.Write(f.Payload)
 		}
 	default:
 		// CRDT/awareness replay noise from the join sequence — not ours.
@@ -181,21 +187,18 @@ func (h *Host) openTerm(id, cols, rows uint16) {
 	if cols == 0 || rows == 0 {
 		cols, rows = 80, 24
 	}
-	cmd := exec.Command(h.cfg.Shell)
-	cmd.Dir = h.cfg.Dir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
+	session, err := h.runtime.Spawn(cols, rows)
 	if err != nil {
-		h.log.Error("pty start failed", "stream", id, "err", err)
+		h.log.Error("shell spawn failed", "stream", id, "err", err)
 		h.sendCtrl(wire.CtrlMsg{Type: "pty_exit", StreamID: id, Code: -1})
 		return
 	}
 
-	t := &term{ptmx: ptmx, cmd: cmd}
+	t := &term{session: session}
 	h.mu.Lock()
 	h.terms[id] = t
 	h.mu.Unlock()
-	h.log.Info("pty opened", "stream", id, "pid", cmd.Process.Pid)
+	h.log.Info("pty opened", "stream", id, "runtime", h.runtimeName())
 	go h.pump(id, t)
 }
 
@@ -203,7 +206,7 @@ func (h *Host) openTerm(id, cols, rows uint16) {
 func (h *Host) pump(id uint16, t *term) {
 	buf := make([]byte, 8192)
 	for {
-		n, err := t.ptmx.Read(buf)
+		n, err := t.session.Pty.Read(buf)
 		if n > 0 {
 			// wire.Encode copies the payload, so buf can be reused.
 			h.send(wire.Frame{Channel: wire.ChPty, StreamID: id, Payload: buf[:n]})
@@ -212,15 +215,7 @@ func (h *Host) pump(id uint16, t *term) {
 			break // EIO on shell exit is the normal path
 		}
 	}
-	code := 0
-	if err := t.cmd.Wait(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			code = exitErr.ExitCode()
-		} else {
-			code = -1
-		}
-	}
+	code := t.session.wait()
 	h.mu.Lock()
 	delete(h.terms, id)
 	h.mu.Unlock()
@@ -233,7 +228,7 @@ func (h *Host) resize(id, cols, rows uint16) {
 	t := h.terms[id]
 	h.mu.Unlock()
 	if t != nil && cols > 0 && rows > 0 {
-		_ = pty.Setsize(t.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+		_ = pty.Setsize(t.session.Pty, &pty.Winsize{Rows: rows, Cols: cols})
 	}
 }
 
@@ -242,8 +237,7 @@ func (h *Host) closeTerm(id uint16) {
 	t := h.terms[id]
 	h.mu.Unlock()
 	if t != nil {
-		_ = t.ptmx.Close()
-		_ = t.cmd.Process.Kill() // pump observes EOF and announces pty_exit
+		t.session.kill() // pump observes EOF and announces pty_exit
 	}
 }
 
@@ -255,9 +249,18 @@ func (h *Host) closeAll() {
 	}
 	h.mu.Unlock()
 	for _, t := range terms {
-		_ = t.ptmx.Close()
-		_ = t.cmd.Process.Kill()
+		t.session.kill()
 	}
+	if err := h.runtime.Close(); err != nil {
+		h.log.Warn("runtime close failed", "err", err)
+	}
+}
+
+func (h *Host) runtimeName() string {
+	if h.cfg.Runtime == "docker" {
+		return "docker"
+	}
+	return "host"
 }
 
 func (h *Host) sendCtrl(msg wire.CtrlMsg) {

@@ -32,6 +32,8 @@ pnpm --filter @atelier/web dev
 
 # terminal 3 (optional) — workspace host: bridges a real shell into a room
 go run atelier.dev/services/workspace-host/cmd/workspace-host --room demo --dir ./data/workspaces/demo
+# add --runtime docker to run shells inside a resource-limited, network-isolated
+# container (bind-mounts the dir; flags: --image --memory --cpus --pids-limit --network)
 
 # terminal 4 (optional) — doc-fs: syncs the room's files to that same directory
 pnpm --filter @atelier/doc-fs exec tsx src/main.ts --room demo --dir ./data/workspaces/demo
