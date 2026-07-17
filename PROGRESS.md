@@ -24,7 +24,7 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
 | Component | Status | Notes |
 |---|---|---|
 | Indexer v0 (symbols + search) | ✅ 2026-07-17 | see row 10 above |
-| Reference/call edges + code graph | ⬜ next | .scm query packs, defs→refs, `/v1/refs`, blast radius |
+| Reference/call edges + code graph | ✅ 2026-07-18 | indexer now extracts call sites in one tree walk (enclosing-function stack → `in_symbol`; callee reduced through member/selector/attribute access) for TS/TSX/JS/Py/Go; name-based call graph with honest `heuristic` confidence; `/v1/refs?name=` returns callers + 1-hop blast-radius summary (count + distinct files); IDE find-references flow (click symbol → callers list "N calls across M files" → click caller → editor navigates). 11 cargo tests (+3 ref extraction/aggregation) + clippy clean. Live-verified: `greet` showed 3 callers with enclosing fns, clicked through to a call site, added a 4th caller via CRDT → re-indexed in the debounce → count updated to 4 |
 | Embeddings + hybrid retrieval | ⬜ | pgvector, chunker, RRF fusion |
 | conductor (agents) + model-gateway | ⬜ | the autonomous-agent system (blueprint doc 07) |
 
@@ -45,12 +45,17 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
   solves (room.go package comment).
 - **Persistence: FS store, not JetStream+S3** — Store interface is the seam.
 - **Indexer: kind-table walk + in-memory index, not .scm packs + graph artifacts** — a
-  syntax-tree walker matching node kinds (extract.rs) gives the same defs output with less
-  grammar-API surface; declarative `.scm` query packs land with reference extraction, where
-  patterns start paying. Index is per-file symbol lists in a HashMap (replace-on-reindex =
-  atomic file updates); the mmap-able CSR graph artifacts of doc 06 §4 arrive with
-  call/reference edges. Symbols are indexed from disk (via doc-fs), so search reflects saved
-  state within the doc-fs + indexer debounce (~sub-second end-to-end).
+  syntax-tree walker matching node kinds (extract.rs) yields both defs and call edges in one
+  pass with less grammar-API surface than `.scm` query packs. Index is per-file symbol +
+  reference lists in HashMaps (replace-on-reindex = atomic file updates); the mmap-able CSR
+  graph artifacts of doc 06 §4 arrive when the graph grows past calls. Symbols are indexed
+  from disk (via doc-fs), so results reflect saved state within the doc-fs + indexer debounce
+  (~sub-second end-to-end).
+- **Call graph: name-based, `heuristic` confidence** — a reference links to any definition
+  sharing its callee name (no scope/type resolution yet), exactly the confidence tiering
+  doc 06 §3 prescribes: consumers (and later the Reviewer agent) treat `heuristic` edges as
+  hints to verify, not proof. Scope-aware resolution + reverse (defs→refs by span) upgrade
+  the tier later. Blast radius is 1-hop (direct callers); transitive arrives with the graph.
 - **Execution: Docker container, not gVisor/Firecracker** — the Runtime interface is the seam
   (host→docker now; gVisor→Firecracker later, blueprint doc 05 §2). v0 limits: one container
   per workspace-host process, cleaned up on graceful SIGTERM (deferred close → `docker rm -f`);

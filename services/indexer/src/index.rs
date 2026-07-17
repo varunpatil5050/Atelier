@@ -1,18 +1,21 @@
-//! In-memory symbol index with ranked fuzzy search.
+//! In-memory symbol + reference index with ranked fuzzy search and a
+//! name-based call graph.
 //!
-//! v0 storage: per-file symbol lists in a HashMap — replaced wholesale on
-//! re-index, so file updates are naturally atomic. The mmap-able graph
-//! artifacts of blueprint doc 06 §4 arrive with reference/call edges.
+//! v0 storage: per-file symbol/reference lists in HashMaps — replaced wholesale
+//! on re-index, so file updates are naturally atomic. The mmap-able CSR graph
+//! artifacts of blueprint doc 06 §4 arrive when resolution graduates from
+//! name-based (heuristic) to scope-aware.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
 
-use crate::extract::Symbol;
+use crate::extract::{FileSymbols, Reference, Symbol};
 
 #[derive(Default)]
 pub struct SymbolIndex {
-    files: HashMap<String, Vec<Symbol>>,
+    symbols: HashMap<String, Vec<Symbol>>,
+    references: HashMap<String, Vec<Reference>>,
 }
 
 #[derive(Serialize)]
@@ -26,25 +29,65 @@ pub struct Hit {
 pub struct Stats {
     pub files: usize,
     pub symbols: usize,
+    pub references: usize,
+}
+
+/// Callers of a symbol plus a 1-hop blast-radius summary (blueprint doc 06 §8).
+#[derive(Serialize)]
+pub struct Refs {
+    pub name: String,
+    pub confidence: &'static str, // "heuristic" — name-based resolution
+    pub count: usize,             // total call sites
+    pub files: usize,             // distinct files touching it
+    pub callers: Vec<Reference>,
 }
 
 impl SymbolIndex {
-    pub fn replace_file(&mut self, path: &str, symbols: Vec<Symbol>) {
-        if symbols.is_empty() {
-            self.files.remove(path);
+    pub fn replace_file(&mut self, path: &str, parsed: FileSymbols) {
+        if parsed.symbols.is_empty() {
+            self.symbols.remove(path);
         } else {
-            self.files.insert(path.to_string(), symbols);
+            self.symbols.insert(path.to_string(), parsed.symbols);
+        }
+        if parsed.references.is_empty() {
+            self.references.remove(path);
+        } else {
+            self.references.insert(path.to_string(), parsed.references);
         }
     }
 
     pub fn remove_file(&mut self, path: &str) {
-        self.files.remove(path);
+        self.symbols.remove(path);
+        self.references.remove(path);
     }
 
     pub fn stats(&self) -> Stats {
         Stats {
-            files: self.files.len(),
-            symbols: self.files.values().map(Vec::len).sum(),
+            files: self.symbols.keys().chain(self.references.keys()).collect::<HashSet<_>>().len(),
+            symbols: self.symbols.values().map(Vec::len).sum(),
+            references: self.references.values().map(Vec::len).sum(),
+        }
+    }
+
+    /// Callers of `name`, sorted by location, with a blast-radius summary.
+    pub fn refs_to(&self, name: &str, limit: usize) -> Refs {
+        let mut callers: Vec<Reference> = self
+            .references
+            .values()
+            .flatten()
+            .filter(|r| r.callee == name)
+            .cloned()
+            .collect();
+        callers.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
+        let count = callers.len();
+        let files = callers.iter().map(|r| &r.path).collect::<HashSet<_>>().len();
+        callers.truncate(limit);
+        Refs {
+            name: name.to_string(),
+            confidence: "heuristic",
+            count,
+            files,
+            callers,
         }
     }
 
@@ -56,7 +99,7 @@ impl SymbolIndex {
             return Vec::new();
         }
         let mut hits: Vec<Hit> = Vec::new();
-        for symbols in self.files.values() {
+        for symbols in self.symbols.values() {
             for sym in symbols {
                 if let Some(score) = score(&q, sym) {
                     hits.push(Hit {
@@ -121,16 +164,33 @@ mod tests {
         }
     }
 
+    fn reference(callee: &str, path: &str, in_symbol: Option<&str>) -> Reference {
+        Reference {
+            callee: callee.into(),
+            path: path.into(),
+            line: 1,
+            in_symbol: in_symbol.map(String::from),
+            preview: String::new(),
+        }
+    }
+
+    fn only_symbols(symbols: Vec<Symbol>) -> FileSymbols {
+        FileSymbols {
+            symbols,
+            references: Vec::new(),
+        }
+    }
+
     fn index() -> SymbolIndex {
         let mut idx = SymbolIndex::default();
         idx.replace_file(
             "a.ts",
-            vec![
+            only_symbols(vec![
                 sym("greet", "fn", "a.ts"),
                 sym("greetEveryone", "fn", "a.ts"),
                 sym("regreet", "fn", "a.ts"),
                 sym("GreetingService", "class", "a.ts"),
-            ],
+            ]),
         );
         idx
     }
@@ -158,10 +218,45 @@ mod tests {
     fn replace_file_swaps_symbols_atomically() {
         let mut idx = index();
         assert_eq!(idx.stats().symbols, 4);
-        idx.replace_file("a.ts", vec![sym("only", "fn", "a.ts")]);
+        idx.replace_file("a.ts", only_symbols(vec![sym("only", "fn", "a.ts")]));
         assert_eq!(idx.stats().symbols, 1);
         assert!(idx.search("greet", 10).is_empty());
         idx.remove_file("a.ts");
         assert_eq!(idx.stats().files, 0);
+    }
+
+    #[test]
+    fn refs_aggregate_callers_across_files_with_blast_summary() {
+        let mut idx = SymbolIndex::default();
+        idx.replace_file(
+            "a.ts",
+            FileSymbols {
+                symbols: vec![sym("greet", "fn", "a.ts")],
+                references: vec![
+                    reference("greet", "a.ts", Some("main")),
+                    reference("other", "a.ts", None),
+                ],
+            },
+        );
+        idx.replace_file(
+            "b.ts",
+            FileSymbols {
+                symbols: vec![],
+                references: vec![reference("greet", "b.ts", Some("run"))],
+            },
+        );
+
+        let refs = idx.refs_to("greet", 10);
+        assert_eq!(refs.count, 2, "two call sites");
+        assert_eq!(refs.files, 2, "across two files");
+        assert_eq!(refs.confidence, "heuristic");
+        // sorted by path then line: a.ts before b.ts
+        assert_eq!(refs.callers[0].path, "a.ts");
+        assert_eq!(refs.callers[1].path, "b.ts");
+        assert_eq!(idx.stats().references, 3);
+
+        // Re-indexing a file swaps its references atomically.
+        idx.replace_file("b.ts", FileSymbols::default());
+        assert_eq!(idx.refs_to("greet", 10).count, 1);
     }
 }

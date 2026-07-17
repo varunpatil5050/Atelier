@@ -36,3 +36,27 @@ export async function searchSymbols(q: string, limit = 20): Promise<SymbolHit[]>
   const { results } = (await res.json()) as { results: SymbolHit[] };
   return results;
 }
+
+export interface Reference {
+  callee: string;
+  path: string;
+  line: number;
+  in_symbol?: string;
+  preview: string;
+}
+
+export interface Refs {
+  name: string;
+  confidence: string; // "heuristic" for name-based resolution
+  count: number; // total call sites
+  files: number; // distinct files (1-hop blast radius)
+  callers: Reference[];
+}
+
+/** Callers of a symbol name, with a blast-radius summary (doc 06 §8). */
+export async function getReferences(name: string): Promise<Refs> {
+  const res = await fetch(`${intelBase()}/v1/refs?name=${encodeURIComponent(name)}`);
+  if (!res.ok) throw new Error(`intel refs: ${res.status}`);
+  const { refs } = (await res.json()) as { refs: Refs };
+  return refs;
+}

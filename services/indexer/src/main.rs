@@ -113,6 +113,7 @@ fn main() {
         let router = Router::new()
             .route("/healthz", get(health))
             .route("/v1/search", get(search))
+            .route("/v1/refs", get(refs))
             .route("/v1/stats", get(stats_handler))
             .route("/v1/reindex", post(reindex_all))
             .layer(cors)
@@ -204,8 +205,8 @@ fn reindex_path(app: &App, abs: &Path) -> bool {
         return false; // binary/non-utf8
     };
 
-    let symbols = extract::extract(&rel, lang, &source);
-    app.index.write().unwrap().replace_file(&rel, symbols);
+    let parsed = extract::extract(&rel, lang, &source);
+    app.index.write().unwrap().replace_file(&rel, parsed);
     true
 }
 
@@ -235,9 +236,32 @@ async fn search(
     }))
 }
 
+#[derive(Deserialize)]
+struct RefsParams {
+    name: String,
+    limit: Option<usize>,
+}
+
+async fn refs(
+    State(app): State<Arc<App>>,
+    Query(params): Query<RefsParams>,
+) -> Json<serde_json::Value> {
+    let started = Instant::now();
+    let limit = params.limit.unwrap_or(100).min(500);
+    let refs = app.index.read().unwrap().refs_to(&params.name, limit);
+    Json(json!({
+        "tookUs": started.elapsed().as_micros(),
+        "refs": refs,
+    }))
+}
+
 async fn stats_handler(State(app): State<Arc<App>>) -> Json<serde_json::Value> {
     let stats = app.index.read().unwrap().stats();
-    Json(json!({ "files": stats.files, "symbols": stats.symbols }))
+    Json(json!({
+        "files": stats.files,
+        "symbols": stats.symbols,
+        "references": stats.references,
+    }))
 }
 
 async fn reindex_all(State(app): State<Arc<App>>) -> Json<serde_json::Value> {
