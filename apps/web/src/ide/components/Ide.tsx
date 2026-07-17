@@ -9,6 +9,7 @@ import { AtelierProvider } from "@atelier/client";
 import { resolveRoomAuth, relayWsUrl } from "../identity";
 import { postRumSample } from "../coreApi";
 import TerminalPane from "./TerminalPane";
+import SymbolSearch from "./SymbolSearch";
 
 type MonacoModule = typeof import("../editor/monacoSetup");
 
@@ -43,6 +44,28 @@ export default function Ide({ room }: { room: string }) {
 
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
+  const pendingRevealRef = useRef<{ path: string; line: number } | null>(null);
+
+  // Open a symbol-search hit: switch files if needed, then reveal the line
+  // (immediately when the file is already bound; via pendingRevealRef when
+  // the binding effect must run first).
+  const openSymbol = (path: string, line: number) => {
+    if (path === active) {
+      const editor = editorRef.current;
+      if (editor) {
+        editor.revealLineInCenter(line);
+        editor.setPosition({ lineNumber: line, column: 1 });
+        editor.focus();
+      }
+      return;
+    }
+    if (!fileNames.includes(path)) {
+      console.warn(`[intel] ${path} not in the room's file map (not synced?)`);
+      return;
+    }
+    pendingRevealRef.current = { path, line };
+    setActive(path);
+  };
 
   // ── provider lifecycle ─────────────────────────────────────────────────
   // Auth resolution is async (core-api session + room token), so the provider
@@ -186,6 +209,16 @@ export default function Ide({ room }: { room: string }) {
     editor.setModel(model);
     const binding = new MonacoBinding(ytext, model, new Set([editor]), provider.awareness);
 
+    // Symbol-search navigation: reveal the requested line once the target
+    // file's binding is attached.
+    const pending = pendingRevealRef.current;
+    if (pending && pending.path === active) {
+      pendingRevealRef.current = null;
+      editor.revealLineInCenter(pending.line);
+      editor.setPosition({ lineNumber: pending.line, column: 1 });
+      editor.focus();
+    }
+
     return () => binding.destroy();
   }, [provider, monacoMod, editorReady, active, synced, room]);
 
@@ -255,6 +288,7 @@ export default function Ide({ room }: { room: string }) {
 
       <div className="ide-body">
         <aside className="ide-sidebar">
+          <SymbolSearch onOpen={openSymbol} />
           <div className="sidebar-head">
             <span>Files</span>
             <button className="btn-icon" onClick={addFile} title="New file">

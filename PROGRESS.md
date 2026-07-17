@@ -17,7 +17,16 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
 | 7 | doc-fs sync + git clone | ✅ 2026-07-15 | services/doc-fs (TS): CRDT ⇄ filesystem via @atelier/client (extracted from apps/web — same client for services, agents later); debounced atomic writes, fs.watch with echo suppression, prefix/suffix minimal diffs (cursor-preserving), CRDT-wins reconcile, doc-side deletes propagate (disk-side deletes deliberately don't, v0), binary/1MiB/ignore guards, `--clone` for git URLs; 7/7 integration tests against the real relay; live-verified full loop: browser edit → disk → `node main.ts` in shared terminal → `echo >> main.ts` → editor |
 | 8 | core-api + signed room tokens | ✅ 2026-07-16 | pkg/authtoken (compact HMAC, not JWT — no alg negotiation); relay enforces room tokens for participants + service secret for host/doc-fs (RELAY_TOKEN_SECRET/RELAY_SERVICE_SECRET; unset = tokenless dev mode); services/core-api (Go): signed-cookie dev sessions, POST /v1/rooms/{room}/token, GET /v1/workspaces, Store iface with MemStore + Postgres/pgx (docker-compose); web flows session→token with graceful fallback (🔒 signed badge), landing lists recent workspaces. Tests: authtoken unit, relay accept/reject (forged/expired/wrong-room/host-needs-service-secret + token-identity-wins-over-spoofed-hello), core-api handlers, real-Postgres integration. Live-verified: browser signed-in edit works; probe proves no-token/forged hello REJECTED (StatusPolicyViolation) while service secret ACCEPTED; workspace row persisted to PG |
 | 9 | OTel metrics + keystroke RUM metric | ✅ 2026-07-17 | pkg/obs (OTel SDK → Prometheus exporter); relay instruments (connections, rooms, frames/bytes by channel, broadcast fan-out, slow-client kicks, compactions); core-api HTTP duration histogram by route/status + POST /v1/rum (session-gated, clamped) ingesting browser-measured WS RTT; web beacons a sample per pong; Prometheus + Grafana in compose with auto-provisioned datasource + "Atelier — Dev Overview" dashboard. Live-verified: two tabs collaborating under auth → dashboard shows connections=2, rooms=1, WS RTT p95≈4.7ms, frames-by-channel, broadcast fan-out |
-| 10 | Indexer v0 (tree-sitter → symbols → search) | ⬜ next | Phase 2 boundary — first intelligence-plane component (Rust) |
+| 10 | Indexer v0 (tree-sitter → symbols → search) | ✅ 2026-07-17 | services/indexer (Rust): tree-sitter symbol extraction for TS/TSX/JS/Py/Go (functions, methods, classes, interfaces, types, enums — container-aware), in-memory index with ranked fuzzy search (exact>prefix>substring>subsequence + kind/length tiebreaks), notify-based file watching with 300ms-debounced per-file re-index, axum HTTP (/v1/search, /v1/stats, /v1/reindex, /healthz) with localhost CORS; 8 cargo tests (per-language extraction, error-tolerance, ranking, atomic replace). Web: intel.ts client + SymbolSearch sidebar (hidden when indexer absent) → click reveals line in Monaco. Live-verified: searched a workspace (2µs), added a function via CRDT → re-indexed within debounce → found it → clicked → editor jumped to the line. **First intelligence-plane component — Phase 2 begins** |
+
+## Phase 2 — Alpha ("the platform gets a brain")
+
+| Component | Status | Notes |
+|---|---|---|
+| Indexer v0 (symbols + search) | ✅ 2026-07-17 | see row 10 above |
+| Reference/call edges + code graph | ⬜ next | .scm query packs, defs→refs, `/v1/refs`, blast radius |
+| Embeddings + hybrid retrieval | ⬜ | pgvector, chunker, RRF fusion |
+| conductor (agents) + model-gateway | ⬜ | the autonomous-agent system (blueprint doc 07) |
 
 ### Increment 2 additions (2026-07-15)
 
@@ -35,6 +44,13 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
 - **Rooms never idle-unload** — avoids unload/join races the production router handoff
   solves (room.go package comment).
 - **Persistence: FS store, not JetStream+S3** — Store interface is the seam.
+- **Indexer: kind-table walk + in-memory index, not .scm packs + graph artifacts** — a
+  syntax-tree walker matching node kinds (extract.rs) gives the same defs output with less
+  grammar-API surface; declarative `.scm` query packs land with reference extraction, where
+  patterns start paying. Index is per-file symbol lists in a HashMap (replace-on-reindex =
+  atomic file updates); the mmap-able CSR graph artifacts of doc 06 §4 arrive with
+  call/reference edges. Symbols are indexed from disk (via doc-fs), so search reflects saved
+  state within the doc-fs + indexer debounce (~sub-second end-to-end).
 - **Execution: Docker container, not gVisor/Firecracker** — the Runtime interface is the seam
   (host→docker now; gVisor→Firecracker later, blueprint doc 05 §2). v0 limits: one container
   per workspace-host process, cleaned up on graceful SIGTERM (deferred close → `docker rm -f`);

@@ -32,3 +32,6 @@ test-results/
 # local claude settings (keep launch.json, ignore personal settings)
 .claude/settings.local.json
 .claude/settings.json
+
+# rust
+target/

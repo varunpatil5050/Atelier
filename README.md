@@ -5,16 +5,18 @@ repository intelligence + replayable timelines. Architecture: [BLUEPRINT.md](BLU
 
 ## Status
 
-Phase 1 (MVP) nearly complete — see [PROGRESS.md](PROGRESS.md). Working today:
-real-time multiplayer code editing (Yjs CRDTs over a custom binary WS protocol), presence +
-named remote cursors, multi-file rooms, durable persistence with client-driven log
-compaction, offline edits reconciled on reconnect, relay-crash recovery, **shared terminals**
-(real shells bridged into rooms by a workspace host, visible to every participant),
-**CRDT ⇄ filesystem sync** (editor, terminal, and disk agree), **signed-token auth**
-(a control-plane `core-api` mints short-lived room tokens; the relay verifies them and
-derives identity from claims, not client assertions), **live observability** (OTel metrics
-→ Prometheus → a provisioned Grafana dashboard, including the browser-measured keystroke-RTT
-SLI), and an automated Playwright multiplayer harness.
+Phase 1 (MVP) complete; Phase 2 (intelligence) underway — see [PROGRESS.md](PROGRESS.md).
+Working today: real-time multiplayer code editing (Yjs CRDTs over a custom binary WS
+protocol), presence + named remote cursors, multi-file rooms, durable persistence with
+client-driven log compaction, offline edits reconciled on reconnect, relay-crash recovery,
+**shared terminals** (real shells bridged into rooms by a workspace host — optionally inside
+a resource-limited, network-isolated container), **CRDT ⇄ filesystem sync** (editor,
+terminal, and disk agree), **signed-token auth** (a control-plane `core-api` mints
+short-lived room tokens; the relay verifies them and derives identity from claims, not client
+assertions), **live observability** (OTel metrics → Prometheus → a provisioned Grafana
+dashboard, including the browser-measured keystroke-RTT SLI), **repository intelligence**
+(a Rust tree-sitter indexer serving ranked symbol search that stays fresh as you type), and
+an automated Playwright multiplayer harness.
 
 ## Quickstart
 
@@ -38,6 +40,10 @@ go run atelier.dev/services/workspace-host/cmd/workspace-host --room demo --dir 
 # terminal 4 (optional) — doc-fs: syncs the room's files to that same directory
 pnpm --filter @atelier/doc-fs exec tsx src/main.ts --room demo --dir ./data/workspaces/demo
 # (--clone <git url> populates an empty workspace from a repo)
+
+# terminal 5 (optional) — indexer: symbol search over the workspace (needs Rust)
+cargo run --release --manifest-path services/indexer/Cargo.toml -- --dir ./data/workspaces/demo
+# → http://localhost:8789; the IDE's "Symbols" panel appears when it's reachable
 ```
 
 With both running, the editor, the terminal, and the filesystem agree: edit `main.ts` in the
@@ -56,6 +62,7 @@ acknowledged edit is lost.
 pnpm --filter @atelier/protocol test   # TS codec + shared golden vectors
 pnpm --filter @atelier/doc-fs test     # CRDT ⇄ filesystem sync vs a real relay
 go test -race ./...                    # relay, core-api, authtoken, full-stack PTY integration
+cargo test --manifest-path services/indexer/Cargo.toml   # tree-sitter extraction + ranking
 pnpm --filter @atelier/web e2e         # Playwright multiplayer harness (boots everything)
 ```
 
@@ -71,6 +78,7 @@ services/collab-relay    Go relay: room actors, update log + compaction, awarene
 services/core-api        Go control plane: dev sessions, workspaces, room-token minting (Postgres or in-memory)
 services/workspace-host  Go: joins rooms as `host`, bridges real PTYs into the terminal channel
 services/doc-fs          TS: CRDT ⇄ filesystem sync (+ git clone) for a workspace directory
+services/indexer         Rust: tree-sitter symbol indexer + ranked search (intelligence plane)
 tests/integration        Cross-service Go tests (relay + host + real shell)
 docs/                    Full architecture blueprint (15 documents)
 ```

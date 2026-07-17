@@ -1,0 +1,26 @@
+[package]
+name = "atelier-indexer"
+version = "0.1.0"
+edition = "2021"
+description = "Atelier repository intelligence: tree-sitter symbol indexing + search (blueprint doc 06)"
+
+[[bin]]
+name = "indexer"
+path = "src/main.rs"
+
+[dependencies]
+tree-sitter = "0.25"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-go = "0.23"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+tower-http = { version = "0.6", features = ["cors"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+notify = "8"
+
+[profile.release]
+lto = "thin"
