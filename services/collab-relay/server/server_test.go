@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -27,7 +28,7 @@ func newTestServer(t *testing.T, st store.Store) *httptest.Server {
 func newTestServerOpts(t *testing.T, st store.Store, opts Options) *httptest.Server {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(testWriter{t}, &slog.HandlerOptions{Level: slog.LevelError}))
-	srv := New(room.NewManager(st, logger), logger, opts)
+	srv := New(room.NewManager(st, t.TempDir(), logger), logger, opts)
 	ts := httptest.NewServer(srv.Routes())
 	t.Cleanup(ts.Close)
 	return ts
@@ -393,4 +394,67 @@ func TestPtyRoutingBetweenClientAndHost(t *testing.T) {
 	if m := a.waitCtrl("host_status"); m["online"] != false {
 		t.Fatalf("a host_status after host death = %v", m)
 	}
+}
+
+func TestTimelineEndpoint(t *testing.T) {
+	ts := newTestServer(t, store.NewMemStore())
+
+	// Record a session: a client joins and sends two updates.
+	a := dial(t, ts, "tlroom", "alice")
+	a.readSync()
+	a.sendUpdate([]byte{0xAA})
+	a.sendUpdate([]byte{0xBB})
+	a.barrier()
+
+	res, err := http.Get(ts.URL + "/timeline/tlroom")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("status %d", res.StatusCode)
+	}
+	var buf strings.Builder
+	dec := json.NewDecoder(res.Body)
+	kinds := []string{}
+	for {
+		var ev map[string]any
+		if err := dec.Decode(&ev); err != nil {
+			break
+		}
+		kinds = append(kinds, ev["kind"].(string))
+		buf.WriteString(ev["kind"].(string) + " ")
+	}
+	// At least: join, crdt, crdt.
+	if len(kinds) < 3 {
+		t.Fatalf("expected >=3 events, got %v", kinds)
+	}
+	if kinds[0] != "join" {
+		t.Fatalf("first event = %s, want join", kinds[0])
+	}
+	crdtCount := 0
+	for _, k := range kinds {
+		if k == "crdt" {
+			crdtCount++
+		}
+	}
+	if crdtCount != 2 {
+		t.Fatalf("got %d crdt events, want 2 (%v)", crdtCount, kinds)
+	}
+}
+
+func TestTimelineEndpointRejectsBadRoomAnd404s(t *testing.T) {
+	ts := newTestServer(t, store.NewMemStore())
+
+	res, _ := http.Get(ts.URL + "/timeline/..%2Fetc")
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad room name status = %d, want 400", res.StatusCode)
+	}
+	res.Body.Close()
+
+	res2, _ := http.Get(ts.URL + "/timeline/never-opened")
+	if res2.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown room status = %d, want 404", res2.StatusCode)
+	}
+	res2.Body.Close()
 }

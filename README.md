@@ -19,8 +19,10 @@ dashboard, including the browser-measured keystroke-RTT SLI), **repository intel
 semantic+lexical retrieval — all staying fresh as you type), **autonomous agents** (a
 retrieval-grounded agent joins a room as a first-class participant and types reviewable edits
 into the live document; runs are event-sourced — and it runs on a zero-token scripted model
-provider, with a real model as a one-step drop-in), and an automated Playwright multiplayer
-harness.
+provider, with a real model as a one-step drop-in), a **replayable timeline** (the relay
+records every room's CRDT + presence history; open a session's replay and scrub through it —
+human keystrokes and agent edits alike — watching the document rebuild and seeing who was
+present at each moment), and an automated Playwright multiplayer harness.
 
 ## Quickstart
 
@@ -91,6 +93,7 @@ services/workspace-host  Go: joins rooms as `host`, bridges real PTYs into the t
 services/doc-fs          TS: CRDT ⇄ filesystem sync (+ git clone) for a workspace directory
 services/indexer         Rust: tree-sitter indexer — symbols, call graph, hybrid retrieval
 services/conductor       TS: agent orchestrator + model-gateway (scripted/zero-token) — scribe agent
+services/collab-relay/timeline   Go: per-room replay recorder (CRDT + presence, JSONL); served at GET /timeline/{room}
 tests/integration        Cross-service Go tests (relay + host + real shell)
 docs/                    Full architecture blueprint (15 documents)
 ```

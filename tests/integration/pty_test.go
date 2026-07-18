@@ -121,7 +121,7 @@ func (c *client) collectPtyUntil(marker string) {
 
 func TestRealShellThroughFullStack(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(testWriter{t}, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	srv := server.New(room.NewManager(store.NewMemStore(), logger), logger, server.Options{})
+	srv := server.New(room.NewManager(store.NewMemStore(), "", logger), logger, server.Options{})
 	ts := httptest.NewServer(srv.Routes())
 	t.Cleanup(ts.Close)
 	wsBase := "ws" + strings.TrimPrefix(ts.URL, "http")

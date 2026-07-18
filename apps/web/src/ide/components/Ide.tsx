@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Y from "yjs";
 import type * as MonacoNs from "monaco-editor";
@@ -284,6 +285,9 @@ export default function Ide({ room }: { room: string }) {
             </span>
           ))}
         </div>
+        <Link className="replay-link" href={`/w/${room}/replay`} title="Replay this session">
+          ◷ replay
+        </Link>
         <StatusPill status={status} synced={synced} latency={latency} />
       </header>
 

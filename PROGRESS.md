@@ -130,4 +130,20 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
   typed in; negative control (no click → timeout) + reject/approve/timeout integration tests
   (15 conductor tests). Still v0: whole-file proposal (not per-hunk), single reviewer.
 
-## Phase 3 — Beta — not started
+## Phase 3 — Beta
+
+| Component | Status | Notes |
+|---|---|---|
+| Replayable timeline | ✅ 2026-07-19 | The relay records a per-room timeline (services/collab-relay/timeline): CRDT updates + presence join/leave, each stamped with a monotonic seq (the room actor's processing order — a total order, so no HLC needed for one relay) and wall-clock ms, to JSONL. `GET /timeline/{room}` serves it (localhost CORS). The web replay player (apps/web/src/ide/replay + /w/[room]/replay) fetches it and rebuilds document state at any scrub point by applying CRDT updates up to that index (rebuild-from-scratch; Yjs applies thousands/ms), rendering the active file in a read-only Monaco with a file picker, play/pause, 0.5–8× speed, an activity heatbar, and the participant set at that moment. "Git + multiplayer replay": every human keystroke AND every agent edit is here because it all flowed through the recorded CRDT. Verified live: recorded a 17-event session (human + scribe agent), scrubbed from the original file → final (agent doc-comment + human edits appear), presence rewinds too. 4 timeline Go tests + 2 endpoint tests. Caught a real bug: Monaco mounts async setting a ref, which didn't re-trigger the render effect — fixed with an editorReady state dep |
+| Firecracker execution plane | ⬜ | not buildable on macOS (needs KVM); currently Docker (see Runtime delta above) |
+| Replay: terminal + agent-reasoning channels | ⬜ | timeline Kind field is the extension point; pty/agent-step capture next |
+| Graph artifacts, Qdrant, preview URLs, Reviewer/Debugger agents, canary deploys | ⬜ | |
+
+### Phase-3 v0 deltas (deliberate)
+
+- **Timeline: JSONL files + rebuild-from-scratch seek, not zstd S3 segments + snapshots** — the
+  Recorder/reader interface is the seam (doc 12 §3–4); base64 CRDT payloads in JSON, fine at
+  workspace scale. Ordering is the relay actor's single-thread order (total), not cross-relay
+  HLC. Only CRDT + presence captured so far (not pty/agent-reasoning).
+
+

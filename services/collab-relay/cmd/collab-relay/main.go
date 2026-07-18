@@ -25,13 +25,14 @@ func main() {
 
 	addr := envOr("RELAY_ADDR", ":8787")
 	dataDir := envOr("RELAY_DATA_DIR", "./data/rooms")
+	timelineDir := envOr("RELAY_TIMELINE_DIR", "./data/timeline")
 
 	st, err := store.NewFSStore(dataDir)
 	if err != nil {
 		logger.Error("store init failed", "err", err)
 		os.Exit(1)
 	}
-	mgr := room.NewManager(st, logger)
+	mgr := room.NewManager(st, timelineDir, logger)
 	opts := server.Options{
 		ServiceSecret: os.Getenv("RELAY_SERVICE_SECRET"),
 	}

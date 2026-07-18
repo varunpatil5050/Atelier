@@ -626,6 +626,152 @@ button {
   background: #ef44441a;
 }
 
+.replay-link {
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  text-decoration: none;
+}
+.replay-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ── replay player ───────────────────────────────────────────────────── */
+.replay,
+.replay-empty {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.replay-empty {
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+.replay-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.replay-topbar .ide-logo {
+  text-decoration: none;
+  color: var(--text);
+}
+.replay-badge {
+  font-size: 11px;
+  color: #a855f7;
+  border: 1px solid #a855f766;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.replay-presence {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.replay-back {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 10px;
+}
+.replay-back:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.replay-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.replay-nofiles {
+  color: var(--text-dim);
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.replay-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+}
+.replay-play {
+  background: var(--accent);
+  color: #0b0d10;
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 32px;
+  font-size: 13px;
+}
+.replay-scrub-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.replay-scrub {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.replay-heatbar {
+  position: relative;
+  display: flex;
+  gap: 1px;
+  height: 10px;
+}
+.heat-cell {
+  flex: 1 1 auto;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.heat-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #fff;
+  border-radius: 1px;
+}
+.replay-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  min-width: 96px;
+  text-align: right;
+}
+.replay-speeds {
+  display: flex;
+  gap: 3px;
+}
+.replay-speed {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.replay-speed.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
 /* y-monaco remote selection base (per-client colors injected at runtime) */
 .yRemoteSelection {
   opacity: 0.55;

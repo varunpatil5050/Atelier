@@ -6,8 +6,12 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/coder/websocket"
@@ -57,6 +61,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /ws", s.handleWS)
+	mux.HandleFunc("GET /timeline/{room}", s.handleTimeline)
 	if s.metricsHandler != nil {
 		mux.Handle("GET /metrics", s.metricsHandler)
 	}
@@ -69,6 +74,39 @@ func (s *Server) SetMetricsHandler(h http.Handler) { s.metricsHandler = h }
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "rooms": s.mgr.Stats()})
+}
+
+// handleTimeline serves a room's recorded replay log (JSONL) to the web
+// player (blueprint doc 12). Read-only; localhost CORS for the dev app.
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	if origin := r.Header.Get("Origin"); localOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+	}
+	name := r.PathValue("room")
+	if !room.ValidRoomName(name) {
+		http.Error(w, "invalid room", http.StatusBadRequest)
+		return
+	}
+	dir := s.mgr.TimelineDir()
+	if dir == "" {
+		http.Error(w, "timeline recording disabled", http.StatusNotFound)
+		return
+	}
+	f, err := os.Open(filepath.Join(dir, name+".jsonl"))
+	if err != nil {
+		http.Error(w, "no timeline for room", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	_, _ = io.Copy(w, f)
+}
+
+var localOriginRe = regexp.MustCompile(`^https?://(localhost|127\.0\.0\.1)(:\d+)?$`)
+
+func localOrigin(origin string) bool {
+	return origin != "" && localOriginRe.MatchString(origin)
 }
 
 // handleWS upgrades, requires a CTRL hello as the first frame, then joins the

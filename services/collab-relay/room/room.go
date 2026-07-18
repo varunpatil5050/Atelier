@@ -15,8 +15,9 @@ package room
 import (
 	"log/slog"
 
-	"atelier.dev/services/collab-relay/store"
 	"atelier.dev/pkg/wire"
+	"atelier.dev/services/collab-relay/store"
+	"atelier.dev/services/collab-relay/timeline"
 	"atelier.dev/services/collab-relay/yaware"
 )
 
@@ -67,9 +68,13 @@ type Room struct {
 	// The workspace host (PTY/exec provider) for this room, if connected.
 	// PTY frames route client↔host; the relay never interprets them.
 	host *Client
+
+	// Replayable timeline recorder (nil = recording disabled). Written only
+	// from the room actor goroutine.
+	rec *timeline.Recorder
 }
 
-func newRoom(name string, st store.Store, logger *slog.Logger) (*Room, error) {
+func newRoom(name string, st store.Store, rec *timeline.Recorder, logger *slog.Logger) (*Room, error) {
 	updates, err := st.Load(name)
 	if err != nil {
 		return nil, err
@@ -87,6 +92,7 @@ func newRoom(name string, st store.Store, logger *slog.Logger) (*Room, error) {
 		updates:  updates,
 		logBytes: bytes,
 		aware:    make(map[uint64]awState),
+		rec:      rec,
 	}
 	go r.run()
 	return r, nil
@@ -158,6 +164,7 @@ func (r *Room) handleJoin(c *Client) {
 	if c == r.host {
 		r.broadcast(c, ctrlHostStatus(true))
 	}
+	r.rec.RecordJoin(timeline.User(c.User))
 	r.log.Info("client joined", "client", c.ID, "user", c.User.Name, "role", c.Role, "peers", len(r.clients))
 }
 
@@ -180,6 +187,7 @@ func (r *Room) handleLeave(c *Client) {
 		r.broadcast(nil, wire.Encode(wire.Frame{Channel: wire.ChAware, Payload: yaware.Encode(removals)}))
 	}
 	r.broadcast(nil, ctrlPeerLeft(c.ID))
+	r.rec.RecordLeave(timeline.User(c.User))
 	if r.host == c {
 		r.host = nil
 		r.broadcast(nil, ctrlHostStatus(false))
@@ -248,6 +256,9 @@ func (r *Room) handleCRDT(c *Client, f wire.Frame) {
 	if err := r.store.Append(r.Name, payload); err != nil {
 		r.log.Error("append failed", "err", err)
 	}
+	// Record the incremental update to the timeline (never the compaction
+	// snapshot — the timeline is the full, un-compacted history for replay).
+	r.rec.RecordCRDT(payload)
 	r.broadcast(c, wire.Encode(wire.Frame{Channel: wire.ChCRDT, StreamID: f.StreamID, Payload: payload}))
 	r.maybeRequestCompaction(c)
 }
