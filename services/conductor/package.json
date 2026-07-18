@@ -1,0 +1,23 @@
+{
+  "name": "@atelier/conductor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@atelier/client": "workspace:*",
+    "@atelier/protocol": "workspace:*",
+    "yjs": "^13.6.27"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}

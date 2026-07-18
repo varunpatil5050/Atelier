@@ -26,7 +26,7 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
 | Indexer v0 (symbols + search) | ✅ 2026-07-17 | see row 10 above |
 | Reference/call edges + code graph | ✅ 2026-07-18 | indexer now extracts call sites in one tree walk (enclosing-function stack → `in_symbol`; callee reduced through member/selector/attribute access) for TS/TSX/JS/Py/Go; name-based call graph with honest `heuristic` confidence; `/v1/refs?name=` returns callers + 1-hop blast-radius summary (count + distinct files); IDE find-references flow (click symbol → callers list "N calls across M files" → click caller → editor navigates). 11 cargo tests (+3 ref extraction/aggregation) + clippy clean. Live-verified: `greet` showed 3 callers with enclosing fns, clicked through to a call site, added a 4th caller via CRDT → re-indexed in the debounce → count updated to 4 |
 | Embeddings + hybrid retrieval | ✅ 2026-07-18 | AST-aware chunker (one chunk per symbol + context header "path·lang·scope·name"; whole-file fallback); deterministic `HashEmbedder` behind an `Embedder` trait (feature-hashing over camel/snake/acronym-split tokens, L2-normalized — no external calls; model-gateway is the future seam); in-memory vector store (brute-force cosine); RRF hybrid `/v1/retrieve` fusing semantic + lexical with `why[]` provenance; IDE gains a symbols\|content toggle — content mode finds code by what it does, with SEMANTIC/LEXICAL badges. 19 cargo tests (+6: tokenizer, embedding determinism/similarity, chunking, hybrid) + clippy clean. Live-verified: "network connection port" surfaced TcpSocket+connect by their body (not name), excluded unrelated auth code, clicked through to the editor |
-| conductor (agents) + model-gateway | ⬜ next | the autonomous-agent system (blueprint doc 07) — the payoff the retrieval stack was built for |
+| conductor (agents) + model-gateway | ✅ 2026-07-18 | services/conductor (TS): model-gateway (ModelProvider iface + ScriptedProvider — deterministic, **zero external calls / zero tokens**; AnthropicProvider is the future drop-in behind the same iface); event-sourced run log (AgentEvent union → JSONL per run, fold→state); **scribe agent** joins a room via @atelier/client as a purple "scribe (agent)" presence (same protocol as humans), retrieves target via the intelligence plane (search+refs), prompts the gateway, and types a doc-comment into the live CRDT line-by-line (preview-anchored, index-drift tolerant). 12 tests incl. full-stack (real relay + human peer observes agent presence + patch convergence). Live-verified: `--goal "document greet"` → agent documented greet with its real call-graph facts (4 callers, top=welcome); run JSONL = plan→retrieve→generate→apply, 11 events. **Phase 2 (Alpha) COMPLETE (scripted); real model is one isolated wiring step** |
 
 ### Increment 2 additions (2026-07-15)
 
@@ -107,4 +107,19 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
   "room token rejected"), service secret → ACCEPTED; `authtest` workspace row persisted to PG.
 
 ## Phase 2 — Alpha ("the platform gets a brain") — not started
+### Phase-2 deltas vs blueprint (deliberate)
+
+- **Agents: scripted provider, not a real model** — the `ModelProvider` interface is the seam;
+  `ScriptedProvider` reads a structured FACTS block from the agent's prompt and emits a
+  deterministic patch, exercising the full machinery (prompts, responses, parsing, event
+  recording, CRDT application, presence) with zero tokens. Wiring `AnthropicProvider` behind
+  the gateway is a small isolated step gated on ANTHROPIC_API_KEY.
+- **conductor v0: single scribe task, not the full agent DAG** — one linear plan→retrieve→
+  generate→apply run rather than the Planner/Coder/Tester/Reviewer graph of doc 07; but the
+  load-bearing shape is real (event-sourced run log, agents-as-room-participants, retrieval-
+  grounded prompts, reviewable CRDT edits). Multi-agent orchestration + human approval gates
+  build on this.
+- **Agent edits apply directly (no approval gate yet)** — the scribe types straight into the
+  CRDT; per-hunk human approval (doc 07 §4) is the next agent-side increment.
+
 ## Phase 3 — Beta — not started
