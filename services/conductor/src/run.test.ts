@@ -9,6 +9,7 @@ import type * as Y from "yjs";
 import { AtelierProvider, WsConnection } from "@atelier/client";
 import { ScriptedProvider } from "./gateway.js";
 import type { Intel, Refs, SymbolHit } from "./intel.js";
+import { PROPOSALS_KEY, type Proposal } from "./proposals.js";
 import { locateInsertion, runScribe } from "./run.js";
 
 /**
@@ -134,6 +135,7 @@ describe("scribe agent against a real relay", () => {
       provider: new ScriptedProvider(),
       intel: new FakeIntel(),
       typeDelayMs: 5, // fast in tests
+      requireApproval: false, // the gated paths have their own tests below
     });
 
     expect(state.status).toBe("applied");
@@ -153,6 +155,127 @@ describe("scribe agent against a real relay", () => {
     expect(text.indexOf("/**")).toBeLessThan(text.indexOf("export function greet"));
     // The agent was visible as a participant while it worked.
     expect(seenNames.has("scribe (agent)")).toBe(true);
+  });
+
+  it("approval gate: parks on the proposal, applies after a human approves", async () => {
+    const room = `agent-appr-${Date.now().toString(36)}`;
+    const conn = new WsConnection(`${relayUrl}/ws`);
+    const peer = new AtelierProvider(conn, room, { id: "h2", name: "reviewer", color: "#00ff00" });
+    cleanups.push(() => peer.destroy());
+    conn.connect();
+    await waitFor(() => peer.synced, 10_000, "peer synced");
+    const files = peer.doc.getMap<Y.Text>("files");
+    const YText = (await import("yjs")).Text;
+    peer.doc.transact(() => files.set("main.ts", new YText(SEED)));
+
+    // The "human": approve the proposal as soon as it appears.
+    const proposals = peer.doc.getMap<Proposal>(PROPOSALS_KEY);
+    const approver = setInterval(() => {
+      for (const [id, p] of proposals.entries()) {
+        if (p.status === "pending") {
+          expect(p.agent).toBe("scribe (agent)");
+          expect(p.insertText).toContain("documented by scribe");
+          proposals.set(id, { ...p, status: "approved", decidedBy: "reviewer" });
+        }
+      }
+    }, 50);
+    cleanups.push(() => clearInterval(approver));
+
+    const state = await runScribe({
+      relayUrl,
+      room,
+      goal: "document greet",
+      provider: new ScriptedProvider(),
+      intel: new FakeIntel(),
+      typeDelayMs: 5,
+      requireApproval: true,
+      approvalTimeoutMs: 10_000,
+    });
+
+    expect(state.status).toBe("applied");
+    expect(state.decidedBy).toBe("reviewer");
+    expect(state.steps).toEqual(["plan", "retrieve", "generate", "propose", "apply"]);
+    await waitFor(
+      () => files.get("main.ts")!.toString().includes("documented by scribe"),
+      5_000,
+      "approved patch visible to the peer",
+    );
+    // The proposal record ends life as an audit entry: applied + who decided.
+    const final = [...proposals.values()].find((p) => p.runId === state.runId)!;
+    expect(final.status).toBe("applied");
+    expect(final.decidedBy).toBe("reviewer");
+  });
+
+  it("approval gate: a rejection leaves the document untouched", async () => {
+    const room = `agent-rej-${Date.now().toString(36)}`;
+    const conn = new WsConnection(`${relayUrl}/ws`);
+    const peer = new AtelierProvider(conn, room, { id: "h3", name: "skeptic", color: "#ff0000" });
+    cleanups.push(() => peer.destroy());
+    conn.connect();
+    await waitFor(() => peer.synced, 10_000, "peer synced");
+    const files = peer.doc.getMap<Y.Text>("files");
+    const YText = (await import("yjs")).Text;
+    peer.doc.transact(() => files.set("main.ts", new YText(SEED)));
+
+    const proposals = peer.doc.getMap<Proposal>(PROPOSALS_KEY);
+    const rejecter = setInterval(() => {
+      for (const [id, p] of proposals.entries()) {
+        if (p.status === "pending") {
+          proposals.set(id, { ...p, status: "rejected", decidedBy: "skeptic" });
+        }
+      }
+    }, 50);
+    cleanups.push(() => clearInterval(rejecter));
+
+    const state = await runScribe({
+      relayUrl,
+      room,
+      goal: "document greet",
+      provider: new ScriptedProvider(),
+      intel: new FakeIntel(),
+      typeDelayMs: 5,
+      requireApproval: true,
+      approvalTimeoutMs: 10_000,
+    });
+
+    expect(state.status).toBe("rejected");
+    expect(state.decidedBy).toBe("skeptic");
+    expect(state.patchedFiles).toEqual([]);
+    expect(files.get("main.ts")!.toString()).toBe(SEED); // untouched
+  });
+
+  it("approval gate: times out when nobody decides, marking the proposal", async () => {
+    const room = `agent-to-${Date.now().toString(36)}`;
+    const conn = new WsConnection(`${relayUrl}/ws`);
+    const peer = new AtelierProvider(conn, room, { id: "h4", name: "afk", color: "#888888" });
+    cleanups.push(() => peer.destroy());
+    conn.connect();
+    await waitFor(() => peer.synced, 10_000, "peer synced");
+    const files = peer.doc.getMap<Y.Text>("files");
+    const YText = (await import("yjs")).Text;
+    peer.doc.transact(() => files.set("main.ts", new YText(SEED)));
+
+    const state = await runScribe({
+      relayUrl,
+      room,
+      goal: "document greet",
+      provider: new ScriptedProvider(),
+      intel: new FakeIntel(),
+      typeDelayMs: 5,
+      requireApproval: true,
+      approvalTimeoutMs: 500, // nobody is coming
+    });
+
+    expect(state.status).toBe("failed");
+    expect(state.error).toMatch(/approval timed out/);
+    expect(files.get("main.ts")!.toString()).toBe(SEED);
+    // No stale pending card left behind for the IDE.
+    const proposals = peer.doc.getMap<Proposal>(PROPOSALS_KEY);
+    await waitFor(
+      () => [...proposals.values()].every((p) => p.status !== "pending"),
+      5_000,
+      "timed-out proposal marked",
+    );
   });
 
   it("fails cleanly when the symbol does not exist", async () => {

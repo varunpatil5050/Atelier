@@ -49,9 +49,11 @@ pnpm --filter @atelier/doc-fs exec tsx src/main.ts --room demo --dir ./data/work
 cargo run --release --manifest-path services/indexer/Cargo.toml -- --dir ./data/workspaces/demo
 # → http://localhost:8789; the IDE's "Intelligence" panel appears when it's reachable
 
-# one-shot (optional) — run an agent: it joins the room and documents a symbol
+# one-shot (optional) — run an agent: it joins the room and proposes a doc comment
 pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --goal "document greet"
-# zero tokens (scripted provider); watch "scribe (agent)" type into the shared doc
+# zero tokens (scripted provider). By default it PARKS on a proposal — approve or
+# reject it in the IDE's review card; only then does "scribe (agent)" type it in.
+# (--no-approval applies directly, skipping the gate.)
 ```
 
 With both running, the editor, the terminal, and the filesystem agree: edit `main.ts` in the

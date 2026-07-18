@@ -544,6 +544,88 @@ button {
   pointer-events: none;
 }
 
+/* ── agent proposals (human-in-the-loop review) ─────────────────────── */
+.proposal-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 260px; /* clears the terminal pane */
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 460px;
+}
+.proposal-card {
+  background: var(--bg-raised);
+  border: 1px solid #a855f766;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.proposal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.proposal-agent {
+  color: #a855f7;
+  font-weight: 600;
+  font-size: 12px;
+}
+.proposal-target {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.proposal-code {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #7fbe7f;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre;
+}
+.proposal-context {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.proposal-context code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+}
+.proposal-actions {
+  display: flex;
+  gap: 8px;
+}
+.proposal-approve,
+.proposal-reject {
+  border-radius: 7px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.proposal-approve {
+  background: var(--green);
+  color: #06230f;
+}
+.proposal-reject {
+  background: transparent;
+  color: var(--red);
+  border-color: #ef444466;
+}
+.proposal-reject:hover {
+  background: #ef44441a;
+}
+
 /* y-monaco remote selection base (per-client colors injected at runtime) */
 .yRemoteSelection {
   opacity: 0.55;

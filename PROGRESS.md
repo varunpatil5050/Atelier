@@ -119,7 +119,15 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
   load-bearing shape is real (event-sourced run log, agents-as-room-participants, retrieval-
   grounded prompts, reviewable CRDT edits). Multi-agent orchestration + human approval gates
   build on this.
-- **Agent edits apply directly (no approval gate yet)** — the scribe types straight into the
-  CRDT; per-hunk human approval (doc 07 §4) is the next agent-side increment.
+- **Agent approval gate** (2026-07-19) — the scribe now proposes by default: it writes a
+  Proposal into the room's shared `Y.Map("proposals")` and parks until a human decides in the
+  IDE's ProposalPanel (approve/reject), then applies (re-anchoring at apply time in case the
+  doc drifted while parked). Living in the CRDT means every participant sees the same pending
+  card and decisions survive refreshes; the record ends as an in-document audit entry
+  (status + decidedBy). New events approval.requested/granted/rejected; run statuses
+  awaiting_approval/rejected; `--no-approval` opts out; timeout marks the proposal so no stale
+  card lingers. Verified live (fresh room): agent proposed → waited → **Approve clicked** →
+  typed in; negative control (no click → timeout) + reject/approve/timeout integration tests
+  (15 conductor tests). Still v0: whole-file proposal (not per-hunk), single reviewer.
 
 ## Phase 3 — Beta — not started

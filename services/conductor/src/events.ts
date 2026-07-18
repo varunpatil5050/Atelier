@@ -13,20 +13,26 @@ import * as path from "node:path";
 
 export type AgentEvent =
   | { type: "run.started"; runId: string; room: string; goal: string; at: string }
-  | { type: "step.started"; step: "plan" | "retrieve" | "generate" | "apply"; at: string }
+  | { type: "step.started"; step: "plan" | "retrieve" | "generate" | "propose" | "apply"; at: string }
   | { type: "retrieval.result"; query: string; hits: number; top?: string; at: string }
   | { type: "model.call"; provider: string; promptHash: string; at: string }
   | { type: "model.result"; outputHash: string; at: string }
   | { type: "patch.proposed"; path: string; line: number; lines: number; at: string }
+  // Human-in-the-loop gate (blueprint doc 07 §4): the agent parks on a
+  // pending proposal until a person decides.
+  | { type: "approval.requested"; proposalId: string; at: string }
+  | { type: "approval.granted"; proposalId: string; by: string; at: string }
+  | { type: "approval.rejected"; proposalId: string; by: string; at: string }
   | { type: "patch.applied"; path: string; at: string }
-  | { type: "run.finished"; status: "applied" | "failed"; error?: string; at: string };
+  | { type: "run.finished"; status: "applied" | "rejected" | "failed"; error?: string; at: string };
 
 export interface RunState {
   runId: string;
   goal: string;
-  status: "running" | "applied" | "failed";
+  status: "running" | "awaiting_approval" | "applied" | "rejected" | "failed";
   steps: string[];
   patchedFiles: string[];
+  decidedBy?: string;
   error?: string;
   events: number;
 }
@@ -75,6 +81,14 @@ export function foldEvents(runId: string, events: AgentEvent[]): RunState {
         break;
       case "step.started":
         state.steps.push(ev.step);
+        break;
+      case "approval.requested":
+        state.status = "awaiting_approval";
+        break;
+      case "approval.granted":
+      case "approval.rejected":
+        state.status = "running";
+        state.decidedBy = ev.by;
         break;
       case "patch.applied":
         state.patchedFiles.push(ev.path);

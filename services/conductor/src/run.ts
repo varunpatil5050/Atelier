@@ -14,6 +14,7 @@ import { AtelierProvider, WsConnection } from "@atelier/client";
 import { RunLog, now, type RunState } from "./events.js";
 import { contentHash, type ModelProvider } from "./gateway.js";
 import type { Intel, SymbolHit } from "./intel.js";
+import { PROPOSALS_KEY, type Proposal } from "./proposals.js";
 
 export interface RunOptions {
   relayUrl: string; // ws://host:port (no /ws suffix)
@@ -26,6 +27,14 @@ export interface RunOptions {
   /** Delay between typed lines so humans can watch the agent work. */
   typeDelayMs?: number;
   syncTimeoutMs?: number;
+  /**
+   * Human-in-the-loop gate (doc 07 §4). Default true: the agent writes a
+   * proposal into Y.Map("proposals") and applies only after a human approves
+   * it in the IDE. false = direct apply (demos/tests).
+   */
+  requireApproval?: boolean;
+  /** How long to park on a pending proposal before failing the run. */
+  approvalTimeoutMs?: number;
 }
 
 const AGENT_COLOR = "#a855f7";
@@ -89,16 +98,15 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
       throw new Error("model returned no usable comment");
     }
 
-    // ── apply ────────────────────────────────────────────────────────────
-    log.append({ type: "step.started", step: "apply", at: now() });
+    // ── propose ──────────────────────────────────────────────────────────
     const files = provider.doc.getMap<Y.Text>("files");
     const ytext = files.get(hit.path);
     if (!ytext) {
       throw new Error(`file ${hit.path} is not in the room's file map`);
     }
-
-    const { offset, indent } = locateInsertion(ytext.toString(), hit);
+    const { indent } = locateInsertion(ytext.toString(), hit);
     const lines = comment.split("\n").map((l) => indent + l);
+    const insertText = lines.join("\n");
     log.append({
       type: "patch.proposed",
       path: hit.path,
@@ -107,13 +115,60 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
       at: now(),
     });
 
-    // Type line-by-line so collaborators watch the agent work (presence is
-    // already visible; the edits attribute to it in real time).
-    let cursor = offset;
-    for (const line of lines) {
-      ytext.insert(cursor, line + "\n");
-      cursor += line.length + 1;
-      await sleep(opts.typeDelayMs ?? 120);
+    if (opts.requireApproval !== false) {
+      log.append({ type: "step.started", step: "propose", at: now() });
+      const proposals = provider.doc.getMap<Proposal>(PROPOSALS_KEY);
+      const proposal: Proposal = {
+        id: `prop-${runId.slice(-8)}`,
+        runId,
+        agent: agentUser.name,
+        path: hit.path,
+        line: hit.line,
+        insertText,
+        targetPreview: hit.preview,
+        status: "pending",
+        createdAt: now(),
+      };
+      proposals.set(proposal.id, proposal);
+      log.append({ type: "approval.requested", proposalId: proposal.id, at: now() });
+
+      let decision: Proposal;
+      try {
+        decision = await awaitDecision(
+          proposals,
+          proposal.id,
+          opts.approvalTimeoutMs ?? 120_000,
+        );
+      } catch (err) {
+        // Don't leave a stale pending card in everyone's IDE.
+        proposals.set(proposal.id, { ...proposal, status: "rejected", decidedBy: "timeout" });
+        throw err;
+      }
+      if (decision.status === "rejected") {
+        log.append({
+          type: "approval.rejected",
+          proposalId: proposal.id,
+          by: decision.decidedBy ?? "unknown",
+          at: now(),
+        });
+        log.append({ type: "run.finished", status: "rejected", at: now() });
+        return log.fold();
+      }
+      log.append({
+        type: "approval.granted",
+        proposalId: proposal.id,
+        by: decision.decidedBy ?? "unknown",
+        at: now(),
+      });
+
+      // ── apply (post-grant) ─────────────────────────────────────────────
+      log.append({ type: "step.started", step: "apply", at: now() });
+      await typeLines(ytext, hit, lines, opts.typeDelayMs ?? 120);
+      proposals.set(proposal.id, { ...proposal, status: "applied", ...(decision.decidedBy ? { decidedBy: decision.decidedBy } : {}) });
+    } else {
+      // Direct apply — explicit opt-out of the gate.
+      log.append({ type: "step.started", step: "apply", at: now() });
+      await typeLines(ytext, hit, lines, opts.typeDelayMs ?? 120);
     }
     log.append({ type: "patch.applied", path: hit.path, at: now() });
 
@@ -195,6 +250,56 @@ export function locateInsertion(
   const target = lines[lineIdx] ?? "";
   const indent = target.slice(0, target.length - target.trimStart().length);
   return { offset, indent };
+}
+
+/**
+ * Type the patch into the live text. Re-anchors via locateInsertion at apply
+ * time: while the run was parked on approval, collaborators may have edited —
+ * the preview anchor keeps the insertion glued to the definition.
+ */
+async function typeLines(
+  ytext: Y.Text,
+  hit: { line: number; preview: string },
+  lines: string[],
+  delayMs: number,
+): Promise<void> {
+  const { offset } = locateInsertion(ytext.toString(), hit);
+  let cursor = offset;
+  for (const line of lines) {
+    ytext.insert(cursor, line + "\n");
+    cursor += line.length + 1;
+    await sleep(delayMs);
+  }
+}
+
+/** Park until a human flips the proposal out of pending (or timeout). */
+function awaitDecision(
+  proposals: Y.Map<Proposal>,
+  id: string,
+  timeoutMs: number,
+): Promise<Proposal> {
+  return new Promise((resolve, reject) => {
+    const check = (): boolean => {
+      const p = proposals.get(id);
+      if (p && p.status !== "pending") {
+        cleanup();
+        resolve(p);
+        return true;
+      }
+      return false;
+    };
+    const observer = () => void check();
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`approval timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      proposals.unobserve(observer);
+    };
+    proposals.observe(observer);
+    check(); // subscribe-then-check: the decision may already be in
+  });
 }
 
 function waitSynced(provider: AtelierProvider, timeoutMs: number): Promise<void> {

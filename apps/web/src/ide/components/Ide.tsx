@@ -10,6 +10,7 @@ import { resolveRoomAuth, relayWsUrl } from "../identity";
 import { postRumSample } from "../coreApi";
 import TerminalPane from "./TerminalPane";
 import SymbolSearch from "./SymbolSearch";
+import ProposalPanel from "./ProposalPanel";
 
 type MonacoModule = typeof import("../editor/monacoSetup");
 
@@ -314,6 +315,12 @@ export default function Ide({ room }: { room: string }) {
             {!synced && <div className="editor-overlay">connecting to room…</div>}
           </main>
           {provider && <TerminalPane provider={provider} room={room} />}
+          {provider && (
+            <ProposalPanel
+              provider={provider}
+              deciderName={peers.find((p) => p.isLocal)?.user.name ?? "me"}
+            />
+          )}
         </div>
       </div>
     </div>

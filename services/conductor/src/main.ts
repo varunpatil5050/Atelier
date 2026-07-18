@@ -20,6 +20,9 @@ const { values } = parseArgs({
     intel: { type: "string", default: "http://localhost:8789" },
     "log-dir": { type: "string", default: "./data/agent-runs" },
     "type-delay": { type: "string", default: "120" },
+    // Human-in-the-loop gate is ON by default; --no-approval opts out.
+    "no-approval": { type: "boolean", default: false },
+    "approval-timeout": { type: "string", default: "120000" },
   },
 });
 
@@ -30,6 +33,10 @@ if (!values.room || !values.goal) {
 
 const serviceToken = process.env.RELAY_SERVICE_SECRET;
 
+if (!values["no-approval"]) {
+  console.log("[conductor] approval gate ON — waiting for a human to approve in the IDE");
+}
+
 const state = await runScribe({
   relayUrl: values.relay!,
   room: values.room,
@@ -39,14 +46,18 @@ const state = await runScribe({
   ...(serviceToken ? { serviceToken } : {}),
   logDir: values["log-dir"]!,
   typeDelayMs: Number(values["type-delay"]),
+  requireApproval: !values["no-approval"],
+  approvalTimeoutMs: Number(values["approval-timeout"]),
 });
 
 console.log(
   `[conductor] run ${state.runId}: ${state.status}` +
+    (state.decidedBy ? ` (decided by ${state.decidedBy})` : "") +
     (state.error ? ` — ${state.error}` : "") +
     ` (goal: ${state.goal}; steps: ${state.steps.join("→")}; events: ${state.events})`,
 );
 if (state.patchedFiles.length > 0) {
   console.log(`[conductor] patched: ${state.patchedFiles.join(", ")}`);
 }
-process.exit(state.status === "applied" ? 0 : 1);
+// Exit codes: 0 applied, 2 rejected by a human (a valid outcome), 1 failed.
+process.exit(state.status === "applied" ? 0 : state.status === "rejected" ? 2 : 1);
