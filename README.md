@@ -23,8 +23,10 @@ provider, with a real model as a one-step drop-in — and it narrates its reason
 step into the room, shown live in the IDE and rebuilt in replay), a **replayable timeline**
 (the relay records every room's CRDT + presence history; open a session's replay and scrub
 through it — human keystrokes, agent edits, and the agent's own reasoning trace alike —
-watching the document rebuild and seeing who was present at each moment), and an automated
-Playwright multiplayer harness.
+watching the document rebuild and seeing who was present at each moment), **preview URLs**
+(start a dev server in a workspace and it's detected and reverse-proxied to a shareable
+`{port}--{room}.preview.<domain>` URL — HTTP and WebSocket — embedded live in the IDE), and an
+automated Playwright multiplayer harness.
 
 ## Quickstart
 
@@ -44,6 +46,12 @@ pnpm --filter @atelier/web dev
 go run atelier.dev/services/workspace-host/cmd/workspace-host --room demo --dir ./data/workspaces/demo
 # add --runtime docker to run shells inside a resource-limited, network-isolated
 # container (bind-mounts the dir; flags: --image --memory --cpus --pids-limit --network)
+# add --preview-router http://localhost:8790 to auto-detect dev servers → shareable preview URLs
+
+# terminal 3b (optional) — preview-router: proxies a workspace's dev server to a URL
+go run atelier.dev/services/preview-router/cmd/preview-router
+# → :8790; run a dev server in the room's terminal and the IDE "Preview" pane picks it up
+#   at http://{port}--demo.preview.localhost:8790/
 
 # terminal 4 (optional) — doc-fs: syncs the room's files to that same directory
 pnpm --filter @atelier/doc-fs exec tsx src/main.ts --room demo --dir ./data/workspaces/demo
@@ -91,7 +99,8 @@ pkg/wire                 Same codec in Go, shared across all Go services
 pkg/authtoken            Compact HMAC room/session tokens (Mint/Verify)
 services/collab-relay    Go relay: room actors, update log + compaction, awareness, PTY routing, token enforcement
 services/core-api        Go control plane: dev sessions, workspaces, room-token minting (Postgres or in-memory)
-services/workspace-host  Go: joins rooms as `host`, bridges real PTYs into the terminal channel
+services/workspace-host  Go: joins rooms as `host`, bridges real PTYs into the terminal channel; detects dev-server ports → preview-router
+services/preview-router  Go: reverse-proxies a workspace's dev server to a shareable URL ({port}--{room}.preview.<domain>, HTTP+WS)
 services/doc-fs          TS: CRDT ⇄ filesystem sync (+ git clone) for a workspace directory
 services/indexer         Rust: tree-sitter indexer — symbols, call graph, hybrid retrieval
 services/conductor       TS: agent orchestrator + model-gateway (scripted/zero-token) — scribe agent

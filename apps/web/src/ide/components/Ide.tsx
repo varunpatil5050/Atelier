@@ -10,6 +10,7 @@ import { AtelierProvider } from "@atelier/client";
 import { resolveRoomAuth, relayWsUrl } from "../identity";
 import { postRumSample } from "../coreApi";
 import TerminalPane from "./TerminalPane";
+import PreviewPane from "./PreviewPane";
 import SymbolSearch from "./SymbolSearch";
 import ProposalPanel from "./ProposalPanel";
 import AgentActivity from "./AgentActivity";
@@ -320,6 +321,7 @@ export default function Ide({ room }: { room: string }) {
           <main className="ide-editor" ref={editorHostRef}>
             {!synced && <div className="editor-overlay">connecting to room…</div>}
           </main>
+          <PreviewPane room={room} />
           {provider && <TerminalPane provider={provider} room={room} />}
           {provider && (
             <ProposalPanel

@@ -34,6 +34,7 @@ func (h *HostRuntime) Spawn(cols, rows uint16) (*Session, error) {
 	}
 	return &Session{
 		Pty:  ptmx,
+		PID:  cmd.Process.Pid,
 		wait: func() int { return exitCode(cmd.Wait()) },
 		kill: func() {
 			_ = ptmx.Close()

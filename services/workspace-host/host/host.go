@@ -23,6 +23,7 @@ import (
 	"github.com/creack/pty"
 
 	"atelier.dev/pkg/wire"
+	"atelier.dev/services/workspace-host/preview"
 )
 
 type Config struct {
@@ -37,7 +38,14 @@ type Config struct {
 	// Runtime selects the isolation rung: "host" (default) or "docker".
 	Runtime string
 	Docker  DockerLimits
-	Logger  *slog.Logger
+	// PreviewRouterURL, when set, enables preview auto-detection: listening
+	// ports the workspace opens are registered with the preview-router so they
+	// get shareable URLs (host runtime only — see preview watcher below).
+	PreviewRouterURL string
+	// PreviewSecret authenticates registrations to a router running with
+	// PREVIEW_REGISTER_SECRET set. Empty in dev-open mode.
+	PreviewSecret string
+	Logger        *slog.Logger
 }
 
 type term struct {
@@ -75,6 +83,25 @@ func Run(ctx context.Context, cfg Config) error {
 
 	h := &Host{cfg: cfg, log: logger, runtime: runtime, terms: make(map[uint16]*term)}
 	defer h.closeAll()
+
+	// Preview auto-detection: scan the workspace's process subtree for listening
+	// ports and publish them to the preview-router. Host runtime only — a
+	// container's ports aren't visible in the host's process/socket tables
+	// (they'd be surfaced by the guest-agent inside, the microVM end state).
+	if cfg.PreviewRouterURL != "" {
+		if cfg.Runtime == "docker" {
+			logger.Warn("preview auto-detection is host-runtime only; skipping for docker")
+		} else {
+			w := &preview.Watcher{
+				Lister:   preview.LsofLister{},
+				Reg:      preview.NewHTTPRegistrar(cfg.PreviewRouterURL, cfg.Room, cfg.PreviewSecret),
+				RootPIDs: h.rootPIDs,
+				Log:      logger,
+			}
+			go w.Run(ctx)
+			logger.Info("preview auto-detection on", "router", cfg.PreviewRouterURL)
+		}
+	}
 
 	delay := time.Second
 	for {
@@ -254,6 +281,20 @@ func (h *Host) closeAll() {
 	if err := h.runtime.Close(); err != nil {
 		h.log.Warn("runtime close failed", "err", err)
 	}
+}
+
+// rootPIDs returns the live shells' PIDs — the roots the preview watcher scans
+// for listening ports the workspace opened.
+func (h *Host) rootPIDs() []int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	pids := make([]int, 0, len(h.terms))
+	for _, t := range h.terms {
+		if t.session.PID > 0 {
+			pids = append(pids, t.session.PID)
+		}
+	}
+	return pids
 }
 
 func (h *Host) runtimeName() string {

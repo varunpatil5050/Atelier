@@ -7,9 +7,12 @@ import (
 )
 
 // Session is one running shell with its PTY master. wait blocks until the
-// shell exits and returns its code; kill force-terminates it.
+// shell exits and returns its code; kill force-terminates it. PID is the
+// shell's process id (0 when unavailable) — the root the preview watcher scans
+// for listening ports the workspace opens.
 type Session struct {
 	Pty  *os.File
+	PID  int
 	wait func() int
 	kill func()
 }

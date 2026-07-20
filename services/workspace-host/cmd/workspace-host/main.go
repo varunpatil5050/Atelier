@@ -27,10 +27,13 @@ func main() {
 	cpus := flag.String("cpus", "1", "CPU limit (docker runtime)")
 	pidsLimit := flag.String("pids-limit", "256", "process count limit (docker runtime)")
 	network := flag.String("network", "none", "container network (docker runtime; 'none' = no egress)")
+	previewRouter := flag.String("preview-router", "", "preview-router control URL (e.g. http://localhost:8790); enables preview auto-detection")
 	flag.Parse()
 
 	// Service token authenticates to an auth-enforced relay (falls back to env).
 	serviceToken := os.Getenv("RELAY_SERVICE_SECRET")
+	// Preview registration secret (empty in dev-open mode).
+	previewSecret := os.Getenv("PREVIEW_REGISTER_SECRET")
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	if *room == "" {
@@ -48,7 +51,9 @@ func main() {
 			Image: *image, Memory: *memory, CPUs: *cpus,
 			PidsLimit: *pidsLimit, Network: *network,
 		},
-		Logger: logger,
+		PreviewRouterURL: *previewRouter,
+		PreviewSecret:    previewSecret,
+		Logger:           logger,
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
 		logger.Error("workspace-host failed", "err", err)

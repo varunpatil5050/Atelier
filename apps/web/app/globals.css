@@ -496,6 +496,81 @@ button {
   position: relative;
 }
 
+/* ── preview pane ─────────────────────────────────────────────────────── */
+.preview-pane {
+  flex: 0 0 auto;
+  height: 320px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: #0d0f13;
+}
+.preview-pane.collapsed {
+  height: auto;
+}
+.preview-pane.preview-empty {
+  height: auto;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+.preview-hint {
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.preview-port {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.preview-select {
+  background: var(--bg-raised);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+.preview-url {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--accent, #6d9eff);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 46%;
+}
+.preview-url:hover {
+  text-decoration: underline;
+}
+.preview-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.preview-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
 /* ── terminal ────────────────────────────────────────────────────────── */
 .terminal-pane {
   flex: 0 0 auto;
