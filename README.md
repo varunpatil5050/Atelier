@@ -41,6 +41,109 @@ build log: [PROGRESS.md](PROGRESS.md).
   multiplayer harness that boots the real stack and asserts cross-client convergence
   (~7 ms propagation).
 
+## System design
+
+Five planes around one shared document. Every collaborative feature — human edits, agent
+edits, agent reasoning, proposals, presence — is state in a Yjs CRDT relayed through a
+per-room actor, which is why everything is simultaneously multiplayer, persistent, and
+replayable. (Full detail: [BLUEPRINT.md](BLUEPRINT.md) and `docs/01–15`.)
+
+```mermaid
+flowchart LR
+  subgraph P["Participants — one binary WS protocol, one client library"]
+    IDE["Web IDE<br/>Next.js · Monaco · xterm · Yjs"]
+    AGT["conductor agent<br/>scribe + model-gateway"]
+    DFS["doc-fs<br/>CRDT ⇄ filesystem"]
+  end
+
+  subgraph C["Collaboration plane · Go"]
+    RLY["collab-relay<br/>room actors · update log · awareness<br/>PTY routing · timeline recorder"]
+    LOGS[("persisted room logs<br/>+ replay timelines")]
+  end
+
+  subgraph E["Execution plane · Go"]
+    WSH["workspace-host<br/>PTYs behind the Runtime seam<br/>(host shell or Docker container)"]
+    DEV["dev server<br/>spawned in the shared shell"]
+    PRV["preview-router<br/>reverse proxy → shareable URLs"]
+  end
+
+  subgraph I["Intelligence plane · Rust"]
+    IDX["indexer<br/>tree-sitter symbols · call graph<br/>hybrid retrieval"]
+  end
+
+  subgraph K["Control plane · Go"]
+    API["core-api<br/>sessions · workspaces · room tokens"]
+  end
+
+  DIR[("workspace directory")]
+  OBS["Prometheus → Grafana"]
+
+  IDE <--> RLY
+  AGT <--> RLY
+  DFS <--> RLY
+  WSH <--> RLY
+  RLY --- LOGS
+  DFS <--> DIR
+  DIR -->|file events| IDX
+  IDE -->|symbols · refs · content| IDX
+  AGT -->|retrieval grounding| IDX
+  IDE -->|mint room token| API
+  WSH -->|detects listening ports| DEV
+  WSH -->|register room + port| PRV
+  PRV -->|proxy HTTP + WS| DEV
+  IDE -->|embedded preview| PRV
+  RLY -.->|metrics| OBS
+  API -.->|metrics| OBS
+  IDE -.->|keystroke-RTT RUM| API
+```
+
+### Core ideas
+
+1. **One protocol, one client, every participant.** Browsers, the filesystem bridge, the
+   terminal host, and AI agents all speak the same binary WebSocket framing
+   (`[channel][flags][streamId][len][payload]` — channels for CTRL, CRDT, awareness, PTY)
+   through the same client library (`@atelier/client`, browser + Node). An agent isn't a
+   bolted-on system — it's just another participant with presence and a cursor.
+2. **Single-homed room actors give total order.** Each room lives on one relay goroutine.
+   Every update passes through it in a single sequence — so persistence is an append log,
+   late-join is replay, and the recorded timeline is totally ordered without distributed
+   clocks.
+3. **The document is the API.** The file map, agent proposals (`Y.Map("proposals")`), and
+   the agent's step-by-step reasoning (`Y.Array("agent_trace")`) are CRDT structures in
+   the room itself. Anything written there is automatically synced to every peer, survives
+   restarts, and shows up in replay — features compose instead of integrate.
+4. **The intelligence loop closes live.** Keystroke → CRDT → doc-fs writes disk → the
+   indexer re-parses within a debounce → search, call graph, and retrieval reflect the
+   edit — so the agent's next retrieval is grounded in code typed seconds ago.
+5. **Interface seams ladder to production.** Every external dependency sits behind a seam
+   with a real, zero-dependency v0: `Runtime` (host shell → Docker → microVM guest-agent),
+   `ModelProvider` (deterministic scripted → real model API), `Embedder` (feature-hash →
+   learned embeddings), `Store` (in-memory → Postgres), preview registration (port
+   watcher → guest-agent). Swapping a rung is a deployment change, not an architecture
+   change.
+6. **Optional planes degrade by design.** The IDE runs on nothing but relay + web;
+   intelligence, auth, terminals, previews, and observability each light up when their
+   service is reachable and detach cleanly when it isn't.
+
+### Life of a keystroke
+
+Monaco edit → y-monaco applies it to the local Y.Doc → update frame over WS → the room
+actor appends it to the log **and** the timeline, then broadcasts → peers converge (a few
+ms) → doc-fs debounces it to disk → the indexer re-indexes the file → symbol search and
+find-references answer with the new code. The round trip is measured in the browser and
+beaconed to core-api as the keystroke-RTT SLI on the Grafana dashboard.
+
+### Life of an agent run
+
+`conductor --goal "document greet"` → the agent joins the room over the same protocol
+(purple presence chip) → pulls grounding facts from the indexer (definition, callers,
+blast radius) → prompts the model-gateway (scripted provider — zero tokens) → writes a
+**Proposal** into the shared doc and narrates every step into `agent_trace` (visible live
+in the sidebar) → a human clicks **Approve** in the IDE → the agent types the patch into
+the CRDT, re-anchored against concurrent edits → doc-fs persists it, the timeline records
+it, and the event-sourced run log folds to `applied`. Rejecting leaves the document
+untouched; walking away times the proposal out.
+
 ## Quickstart
 
 Requirements: Node ≥ 22, pnpm 9, Go ≥ 1.26.
