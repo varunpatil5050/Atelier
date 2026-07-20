@@ -9,7 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -36,6 +38,11 @@ type Options struct {
 	// ServiceSecret authenticates infrastructure connections (workspace-host,
 	// doc-fs). Role=host is only obtainable through this path in token mode.
 	ServiceSecret string
+	// OriginPatterns lists the browser Origins allowed to open a WebSocket
+	// (coder/websocket glob patterns, host[:port], no scheme). Empty ⇒ the
+	// localhost dev defaults. Set it (e.g. via RELAY_ORIGIN_PATTERNS) when the
+	// app is served from another host — a tunnel domain, a staging origin.
+	OriginPatterns []string
 }
 
 type Server struct {
@@ -51,6 +58,15 @@ func New(mgr *room.Manager, logger *slog.Logger, opts Options) *Server {
 		logger.Warn("relay running in TOKENLESS dev mode — set RELAY_TOKEN_SECRET to enforce auth")
 	}
 	return &Server{mgr: mgr, log: logger, opts: opts, baseCtx: context.Background()}
+}
+
+// originPatterns returns the configured WS Origin allowlist, or the localhost
+// dev defaults when none are set.
+func (s *Server) originPatterns() []string {
+	if len(s.opts.OriginPatterns) > 0 {
+		return s.opts.OriginPatterns
+	}
+	return []string{"localhost:*", "127.0.0.1:*"}
 }
 
 // SetBaseContext installs the process lifetime context; cancelling it drains
@@ -77,9 +93,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleTimeline serves a room's recorded replay log (JSONL) to the web
-// player (blueprint doc 12). Read-only; localhost CORS for the dev app.
+// player (blueprint doc 12). Read-only; CORS is granted to the same origins
+// allowed to open a WebSocket (localhost by default, plus any configured
+// OriginPatterns) so replay works wherever the app is served — e.g. a tunnel.
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
-	if origin := r.Header.Get("Origin"); localOrigin(origin) {
+	if origin := r.Header.Get("Origin"); s.allowedOrigin(origin) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}
@@ -109,13 +127,35 @@ func localOrigin(origin string) bool {
 	return origin != "" && localOriginRe.MatchString(origin)
 }
 
+// allowedOrigin reports whether an Origin may read cross-origin responses
+// (e.g. the replay timeline). It grants the localhost dev origins plus any host
+// matching the configured WS OriginPatterns, so the same allowlist governs the
+// WebSocket and the timeline fetch.
+func (s *Server) allowedOrigin(origin string) bool {
+	if origin == "" {
+		return false
+	}
+	if localOrigin(origin) {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	for _, pat := range s.originPatterns() {
+		if ok, _ := path.Match(pat, u.Host); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // handleWS upgrades, requires a CTRL hello as the first frame, then joins the
 // room. Auth is v0 (hello-asserted identity); production swaps this for the
 // signed room-token handshake in blueprint doc 01 §B.4.
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Dev origins; production uses exact origins from config.
-		OriginPatterns: []string{"localhost:*", "127.0.0.1:*"},
+		OriginPatterns: s.originPatterns(),
 	})
 	if err != nil {
 		s.log.Warn("ws accept failed", "err", err)

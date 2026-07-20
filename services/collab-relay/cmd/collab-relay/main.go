@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -35,6 +36,10 @@ func main() {
 	mgr := room.NewManager(st, timelineDir, logger)
 	opts := server.Options{
 		ServiceSecret: os.Getenv("RELAY_SERVICE_SECRET"),
+	}
+	if origins := os.Getenv("RELAY_ORIGIN_PATTERNS"); origins != "" {
+		opts.OriginPatterns = splitAndTrim(origins)
+		logger.Info("ws origin allowlist", "patterns", opts.OriginPatterns)
 	}
 	if secret := os.Getenv("RELAY_TOKEN_SECRET"); secret != "" {
 		opts.TokenSecret = []byte(secret)
@@ -78,4 +83,15 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// splitAndTrim parses a comma-separated env value into trimmed, non-empty items.
+func splitAndTrim(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

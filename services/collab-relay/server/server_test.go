@@ -443,6 +443,46 @@ func TestTimelineEndpoint(t *testing.T) {
 	}
 }
 
+// TestTimelineCORSHonorsOriginAllowlist proves the replay timeline is readable
+// cross-origin from any configured origin (e.g. a tunnel domain), not just
+// localhost — the fix that made replay work when the app is served off-box.
+func TestTimelineCORSHonorsOriginAllowlist(t *testing.T) {
+	ts := newTestServerOpts(t, store.NewMemStore(), Options{
+		OriginPatterns: []string{"localhost:*", "*.trycloudflare.com"},
+	})
+
+	// Record one event so the timeline file exists.
+	a := dial(t, ts, "tlcors", "alice")
+	a.readSync()
+	a.sendUpdate([]byte{0xAA})
+	a.barrier()
+
+	cases := []struct {
+		origin    string
+		wantAllow bool
+	}{
+		{"https://principles-karma.trycloudflare.com", true}, // configured tunnel domain
+		{"http://localhost:3000", true},                      // localhost dev app
+		{"https://evil.example.com", false},                  // not on the allowlist
+	}
+	for _, tc := range cases {
+		req, _ := http.NewRequest("GET", ts.URL+"/timeline/tlcors", nil)
+		req.Header.Set("Origin", tc.origin)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := res.Header.Get("Access-Control-Allow-Origin")
+		res.Body.Close()
+		if tc.wantAllow && got != tc.origin {
+			t.Errorf("origin %q: ACAO = %q, want it echoed back", tc.origin, got)
+		}
+		if !tc.wantAllow && got != "" {
+			t.Errorf("origin %q: ACAO = %q, want empty (not allowed)", tc.origin, got)
+		}
+	}
+}
+
 func TestTimelineEndpointRejectsBadRoomAnd404s(t *testing.T) {
 	ts := newTestServer(t, store.NewMemStore())
 
