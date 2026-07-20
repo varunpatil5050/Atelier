@@ -271,6 +271,16 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
     needle.chars().all(|c| chars.any(|h| h == c))
 }
 
+impl std::fmt::Debug for Retrieved {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Retrieved({:?} {}:{} why={:?} score={:.4})",
+            self.symbol, self.path, self.line, self.why, self.score
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -436,15 +446,5 @@ mod tests {
         assert!(top.why.contains(&"semantic"), "why: {:?}", top.why);
         // greet (1) + TcpSocket class + connect method (2) = 3 chunks.
         assert_eq!(idx.stats().chunks, 3);
-    }
-}
-
-impl std::fmt::Debug for Retrieved {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Retrieved({:?} {}:{} why={:?} score={:.4})",
-            self.symbol, self.path, self.line, self.why, self.score
-        )
     }
 }

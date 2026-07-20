@@ -1,32 +1,45 @@
 # Atelier
 
-**AI-native collaborative coding platform** — multiplayer cloud IDE + autonomous agents +
-repository intelligence + replayable timelines. Architecture: [BLUEPRINT.md](BLUEPRINT.md).
+**An AI-native collaborative coding platform** — a real-time multiplayer cloud IDE where
+humans and AI agents work in the same live document, backed by repository intelligence,
+full session replay, and shareable preview URLs. Polyglot monorepo: **Go** (collaboration +
+execution plane), **Rust** (intelligence plane), **TypeScript** (IDE + agents).
 
-## Status
+Architecture blueprint: [BLUEPRINT.md](BLUEPRINT.md) (15 docs) · increment-by-increment
+build log: [PROGRESS.md](PROGRESS.md).
 
-Phase 1 (MVP) complete; Phase 2 (intelligence) underway — see [PROGRESS.md](PROGRESS.md).
-Working today: real-time multiplayer code editing (Yjs CRDTs over a custom binary WS
-protocol), presence + named remote cursors, multi-file rooms, durable persistence with
-client-driven log compaction, offline edits reconciled on reconnect, relay-crash recovery,
-**shared terminals** (real shells bridged into rooms by a workspace host — optionally inside
-a resource-limited, network-isolated container), **CRDT ⇄ filesystem sync** (editor,
-terminal, and disk agree), **signed-token auth** (a control-plane `core-api` mints
-short-lived room tokens; the relay verifies them and derives identity from claims, not client
-assertions), **live observability** (OTel metrics → Prometheus → a provisioned Grafana
-dashboard, including the browser-measured keystroke-RTT SLI), **repository intelligence**
-(a Rust tree-sitter indexer serving symbol search, a call graph / find-references, and hybrid
-semantic+lexical retrieval — all staying fresh as you type), **autonomous agents** (a
-retrieval-grounded agent joins a room as a first-class participant and types reviewable edits
-into the live document; runs are event-sourced — and it runs on a zero-token scripted model
-provider, with a real model as a one-step drop-in — and it narrates its reasoning step by
-step into the room, shown live in the IDE and rebuilt in replay), a **replayable timeline**
-(the relay records every room's CRDT + presence history; open a session's replay and scrub
-through it — human keystrokes, agent edits, and the agent's own reasoning trace alike —
-watching the document rebuild and seeing who was present at each moment), **preview URLs**
-(start a dev server in a workspace and it's detected and reverse-proxied to a shareable
-`{port}--{room}.preview.<domain>` URL — HTTP and WebSocket — embedded live in the IDE), and an
-automated Playwright multiplayer harness.
+## What works today
+
+- **Real-time multiplayer editing** — Yjs CRDTs over a custom binary WebSocket protocol;
+  presence and named remote cursors; multi-file rooms; durable persistence with
+  client-driven log compaction; offline edits reconcile on reconnect; kill the relay
+  mid-session and no acknowledged edit is lost.
+- **Shared terminals** — real shells bridged into rooms by a workspace host, optionally
+  inside a resource-limited, network-isolated Docker container. One shell, visible to
+  every participant.
+- **CRDT ⇄ filesystem sync** — the editor, the terminal, and the disk agree; `--clone`
+  boots a workspace from any git repo.
+- **Repository intelligence** (Rust + tree-sitter) — symbol search, a call graph with
+  find-references and blast-radius summaries, and hybrid semantic+lexical retrieval (RRF
+  fusion with provenance) — all re-indexed live as you type.
+- **Autonomous agents** — a retrieval-grounded agent joins the room as a first-class
+  participant, narrates its reasoning step by step into the room, and proposes reviewable
+  edits gated behind human approval in the IDE. Runs are event-sourced; the scripted
+  model provider spends **zero tokens**, and a real model drops in behind the same
+  interface.
+- **Replayable timeline** — the relay records every room's history; scrub any session and
+  watch the document rebuild moment by moment — keystrokes, agent edits, the agent's own
+  reasoning, and who was present, all faithful to that point in time.
+- **Preview URLs** — start a dev server inside a workspace and it's auto-detected and
+  reverse-proxied to a shareable `{port}--{room}.preview.<domain>` URL (HTTP **and**
+  WebSocket), embedded live in the IDE.
+- **Signed-token auth** (optional) — a control-plane `core-api` mints short-lived HMAC
+  room tokens; the relay derives identity from token claims, never client assertions.
+- **Live observability** — OTel → Prometheus → a provisioned Grafana dashboard, including
+  the flagship SLI: keystroke round-trip time, measured in the browser.
+- **Tested end to end** — Go (`-race`), Rust, and TypeScript suites plus a Playwright
+  multiplayer harness that boots the real stack and asserts cross-client convergence
+  (~7 ms propagation).
 
 ## Quickstart
 
