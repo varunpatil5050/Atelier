@@ -10,6 +10,7 @@ import { AtelierProvider, WsConnection } from "@atelier/client";
 import { ScriptedProvider } from "./gateway.js";
 import type { Intel, Refs, SymbolHit } from "./intel.js";
 import { PROPOSALS_KEY, type Proposal } from "./proposals.js";
+import { AGENT_TRACE_KEY, type AgentStep } from "./trace.js";
 import { locateInsertion, runScribe } from "./run.js";
 
 /**
@@ -155,6 +156,19 @@ describe("scribe agent against a real relay", () => {
     expect(text.indexOf("/**")).toBeLessThan(text.indexOf("export function greet"));
     // The agent was visible as a participant while it worked.
     expect(seenNames.has("scribe (agent)")).toBe(true);
+
+    // The agent's reasoning trace landed in the SHARED doc — visible to the
+    // peer live, and replayable because it rides the recorded CRDT updates.
+    const traceSteps = peer.doc
+      .getArray<AgentStep>(AGENT_TRACE_KEY)
+      .toArray()
+      .filter((s) => s.runId === state.runId);
+    const stepNames = traceSteps.map((s) => s.step);
+    expect(stepNames).toEqual(["started", "plan", "retrieve", "generate", "apply", "done"]);
+    expect(traceSteps.every((s) => s.agent === "scribe (agent)")).toBe(true);
+    const retrieveStep = traceSteps.find((s) => s.step === "retrieve")!;
+    expect(retrieveStep.detail).toContain("found fn greet at main.ts:1");
+    expect(retrieveStep.detail).toContain("1 caller across 1 file");
   });
 
   it("approval gate: parks on the proposal, applies after a human approves", async () => {

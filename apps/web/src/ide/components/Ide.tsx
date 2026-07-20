@@ -12,6 +12,7 @@ import { postRumSample } from "../coreApi";
 import TerminalPane from "./TerminalPane";
 import SymbolSearch from "./SymbolSearch";
 import ProposalPanel from "./ProposalPanel";
+import AgentActivity from "./AgentActivity";
 
 type MonacoModule = typeof import("../editor/monacoSetup");
 
@@ -312,6 +313,7 @@ export default function Ide({ room }: { room: string }) {
               </li>
             ))}
           </ul>
+          {provider && <AgentActivity provider={provider} />}
         </aside>
 
         <div className="ide-main">

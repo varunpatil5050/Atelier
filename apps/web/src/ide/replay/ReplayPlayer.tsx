@@ -10,6 +10,8 @@ import {
   reconstructAt,
   type TimelineEvent,
 } from "./timeline";
+import { agentTraceOf, type AgentStep } from "../agentTrace";
+import AgentStepList from "../components/AgentStepList";
 
 type MonacoModule = typeof import("../editor/monacoSetup");
 
@@ -75,14 +77,21 @@ export default function ReplayPlayer({ room }: { room: string }) {
     };
   }, []);
 
-  // Reconstruct doc state at the scrub position.
+  // Reconstruct doc state at the scrub position. The agent trace rides the
+  // same CRDT updates, so it reconstructs to exactly this point for free.
   const snapshot = useMemo(() => {
-    if (!events) return { files: new Map<string, string>(), present: [] as ReturnType<typeof presenceAt> };
+    if (!events)
+      return {
+        files: new Map<string, string>(),
+        present: [] as ReturnType<typeof presenceAt>,
+        trace: [] as AgentStep[],
+      };
     const doc = reconstructAt(events, idx);
     const files = filesOf(doc);
+    const trace = agentTraceOf(doc);
     const present = presenceAt(events, idx);
     doc.destroy();
-    return { files, present };
+    return { files, present, trace };
   }, [events, idx]);
 
   // Pick/keep an active file that exists at this point.
@@ -184,6 +193,14 @@ export default function ReplayPlayer({ room }: { room: string }) {
           </ul>
         </aside>
         <main className="ide-editor" ref={editorHostRef} />
+        {snapshot.trace.length > 0 && (
+          <aside className="replay-agent-lane">
+            <div className="sidebar-head">
+              <span>Agent reasoning (at this point)</span>
+            </div>
+            <AgentStepList steps={snapshot.trace} highlightLast />
+          </aside>
+        )}
       </div>
 
       <footer className="replay-controls">

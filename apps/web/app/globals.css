@@ -772,6 +772,64 @@ button {
   background: var(--bg-hover);
 }
 
+/* ── agent reasoning (live feed + replay lane) ──────────────────────── */
+.agent-activity {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  padding-bottom: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.replay-agent-lane {
+  flex: 0 0 280px;
+  border-left: 1px solid var(--border);
+  background: var(--bg-raised);
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+.agent-steps {
+  list-style: none;
+  margin: 0;
+  padding: 2px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-step {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.agent-step.current {
+  background: var(--bg-hover);
+  outline: 1px solid #a855f733;
+}
+.agent-step-icon {
+  flex: 0 0 auto;
+  width: 14px;
+  text-align: center;
+}
+.agent-step-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.agent-step-kind {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.agent-step-detail {
+  color: var(--text-dim);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 /* y-monaco remote selection base (per-client colors injected at runtime) */
 .yRemoteSelection {
   opacity: 0.55;

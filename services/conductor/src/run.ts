@@ -15,6 +15,7 @@ import { RunLog, now, type RunState } from "./events.js";
 import { contentHash, type ModelProvider } from "./gateway.js";
 import type { Intel, SymbolHit } from "./intel.js";
 import { PROPOSALS_KEY, type Proposal } from "./proposals.js";
+import { TraceWriter } from "./trace.js";
 
 export interface RunOptions {
   relayUrl: string; // ws://host:port (no /ws suffix)
@@ -55,13 +56,19 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
   });
   provider.awareness.setLocalStateField("user", agentUser);
 
+  // Narrates reasoning into the shared doc once synced (live + replayable).
+  let trace: TraceWriter | null = null;
+
   try {
     conn.connect();
     await waitSynced(provider, opts.syncTimeoutMs ?? 10_000);
+    trace = new TraceWriter(provider.doc, runId, agentUser.name);
+    trace.step("started", `goal: ${JSON.stringify(opts.goal)}`);
 
     // ── plan ─────────────────────────────────────────────────────────────
     log.append({ type: "step.started", step: "plan", at: now() });
     const target = parseGoal(opts.goal);
+    trace.step("plan", `target symbol: ${target}`);
 
     // ── retrieve ─────────────────────────────────────────────────────────
     log.append({ type: "step.started", step: "retrieve", at: now() });
@@ -78,6 +85,12 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
       throw new Error(`no symbol found for "${target}"`);
     }
     const refs = await opts.intel.refs(hit.name);
+    trace.step(
+      "retrieve",
+      `found ${hit.kind} ${hit.name} at ${hit.path}:${hit.line}; ` +
+        `${refs.count} caller${refs.count === 1 ? "" : "s"} across ${refs.files} file${refs.files === 1 ? "" : "s"}` +
+        (refs.callers[0]?.in_symbol ? ` (e.g. ${refs.callers[0].in_symbol})` : ""),
+    );
 
     // ── generate ─────────────────────────────────────────────────────────
     log.append({ type: "step.started", step: "generate", at: now() });
@@ -97,6 +110,10 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
     if (!comment || !comment.startsWith("/**")) {
       throw new Error("model returned no usable comment");
     }
+    trace.step(
+      "generate",
+      `model "${opts.provider.name}" produced a ${comment.split("\n").length}-line doc comment`,
+    );
 
     // ── propose ──────────────────────────────────────────────────────────
     const files = provider.doc.getMap<Y.Text>("files");
@@ -131,6 +148,7 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
       };
       proposals.set(proposal.id, proposal);
       log.append({ type: "approval.requested", proposalId: proposal.id, at: now() });
+      trace.step("propose", `proposed ${lines.length} lines at ${hit.path}:${hit.line} — awaiting human approval`);
 
       let decision: Proposal;
       try {
@@ -151,7 +169,9 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
           by: decision.decidedBy ?? "unknown",
           at: now(),
         });
+        trace.step("decision", `rejected by ${decision.decidedBy ?? "unknown"}`);
         log.append({ type: "run.finished", status: "rejected", at: now() });
+        await sleep(300); // let the trace update flush through the relay
         return log.fold();
       }
       log.append({
@@ -160,6 +180,7 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
         by: decision.decidedBy ?? "unknown",
         at: now(),
       });
+      trace.step("decision", `approved by ${decision.decidedBy ?? "unknown"}`);
 
       // ── apply (post-grant) ─────────────────────────────────────────────
       log.append({ type: "step.started", step: "apply", at: now() });
@@ -171,16 +192,25 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
       await typeLines(ytext, hit, lines, opts.typeDelayMs ?? 120);
     }
     log.append({ type: "patch.applied", path: hit.path, at: now() });
+    trace.step("apply", `inserted ${lines.length} lines at ${hit.path}:${hit.line}`);
+    trace.step("done", "run applied");
 
     // Give the final update a beat to flush through the relay.
     await sleep(300);
     log.append({ type: "run.finished", status: "applied", at: now() });
     return log.fold();
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    try {
+      trace?.step("failed", message);
+      await sleep(300); // best-effort flush of the trace through the relay
+    } catch {
+      // tracing must never mask the original failure
+    }
     log.append({
       type: "run.finished",
       status: "failed",
-      error: err instanceof Error ? err.message : String(err),
+      error: message,
       at: now(),
     });
     return log.fold();

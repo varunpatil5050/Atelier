@@ -19,10 +19,12 @@ dashboard, including the browser-measured keystroke-RTT SLI), **repository intel
 semantic+lexical retrieval — all staying fresh as you type), **autonomous agents** (a
 retrieval-grounded agent joins a room as a first-class participant and types reviewable edits
 into the live document; runs are event-sourced — and it runs on a zero-token scripted model
-provider, with a real model as a one-step drop-in), a **replayable timeline** (the relay
-records every room's CRDT + presence history; open a session's replay and scrub through it —
-human keystrokes and agent edits alike — watching the document rebuild and seeing who was
-present at each moment), and an automated Playwright multiplayer harness.
+provider, with a real model as a one-step drop-in — and it narrates its reasoning step by
+step into the room, shown live in the IDE and rebuilt in replay), a **replayable timeline**
+(the relay records every room's CRDT + presence history; open a session's replay and scrub
+through it — human keystrokes, agent edits, and the agent's own reasoning trace alike —
+watching the document rebuild and seeing who was present at each moment), and an automated
+Playwright multiplayer harness.
 
 ## Quickstart
 
