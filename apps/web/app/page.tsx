@@ -35,10 +35,19 @@ export default function Home() {
 
   return (
     <main className="landing">
+      <div className="landing-mark" aria-hidden>
+        A
+      </div>
       <h1 className="landing-title">Atelier</h1>
       <p className="landing-sub">
         A multiplayer cloud workspace — humans and AI agents, one live session.
       </p>
+      <div className="landing-features">
+        <span className="landing-feature">Real-time multiplayer</span>
+        <span className="landing-feature">AI agent team</span>
+        <span className="landing-feature">Session replay</span>
+        <span className="landing-feature">Preview URLs</span>
+      </div>
       <form
         className="landing-form"
         onSubmit={(e) => {
