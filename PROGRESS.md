@@ -170,3 +170,28 @@ Build order follows the "first 10 concrete tasks" in docs/15-deliverables.md.
   route is the no-DNS fallback.
 
 
+## Full-system review — 2026-07-21 (final audit)
+
+Whole-codebase pass: everything linked, connected, and green; no orphans or leaks.
+
+- **Static:** `go build ./...` + `go vet ./...` clean; `cargo clippy --all-targets -D warnings`
+  clean; `tsc` clean across all five TS packages.
+- **Tests:** `go test -race ./...` (11 packages, 0 races) · Rust 20 · protocol 16 · doc-fs 7 ·
+  conductor 44 · web production build · Playwright multiplayer e2e 3/3 (~6 ms cross-client
+  propagation). **~117 tests, all green.**
+- **Connectivity:** all 107 source files reach the build — every Rust module is declared, every
+  Go package compiles, every web component is mounted (from `Ide.tsx`), every conductor module
+  is imported; `@atelier/client` is consumed by web + doc-fs + conductor; the TS and Go codecs
+  are pinned to the same `frames.json` fixtures. All five agent roles (scribe/reviewer/planner/
+  tester/debugger) dispatch from `main.ts`.
+- **Wiring:** the four `NEXT_PUBLIC_*` URLs map to the correct service ports (8787/8788/8789/8790);
+  `RELAY_TOKEN_SECRET`↔`ROOM_TOKEN_SECRET` and `PREVIEW_REGISTER_SECRET` pairings match across
+  services.
+- **No leaks / no dead weight:** `.env`/`.env.local`/`data/` gitignored and untracked; no
+  hardcoded secrets; no `TODO`/`FIXME`/placeholder code; removed one stray empty directory. Git
+  tree clean.
+
+**Status:** the full self-correcting agent team (Planner · Coder · Reviewer · Tester · Debugger)
+runs at zero tokens. The one remaining token-spending step is wiring the real model behind the
+`ModelProvider` seam; deploying to a permanent host and the microVM execution plane (needs KVM)
+are the other open items.

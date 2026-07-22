@@ -222,7 +222,7 @@ pnpm --filter @atelier/protocol test   # TS codec + shared golden vectors
 pnpm --filter @atelier/doc-fs test     # CRDT ⇄ filesystem sync vs a real relay
 go test -race ./...                    # relay, core-api, authtoken, full-stack PTY integration
 cargo test --manifest-path services/indexer/Cargo.toml   # tree-sitter extraction + ranking + retrieval
-pnpm --filter @atelier/conductor test  # agent run vs a real relay (gateway, run log, scribe)
+pnpm --filter @atelier/conductor test  # the agent team vs a real relay (planner/scribe/reviewer/tester/debugger)
 pnpm --filter @atelier/web e2e         # Playwright multiplayer harness (boots everything)
 ```
 
