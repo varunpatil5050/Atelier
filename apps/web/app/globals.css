@@ -676,6 +676,65 @@ button {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   color: var(--text);
 }
+/* ── reviewer agent's second opinion on a proposal ─────────────────────── */
+.proposal-review {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised, #0f1420);
+  font-size: 11px;
+}
+.proposal-review.review-pending {
+  color: var(--text-dim);
+  font-style: italic;
+}
+.proposal-review .review-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.review-verdict {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.review-by {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.review-summary {
+  color: var(--text);
+  line-height: 1.45;
+}
+.review-notes {
+  margin: 5px 0 0;
+  padding-left: 16px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.proposal-review.verdict-approve {
+  border-color: #22c55e55;
+  background: #22c55e12;
+}
+.proposal-review.verdict-approve .review-verdict {
+  color: #4ade80;
+}
+.proposal-review.verdict-concerns {
+  border-color: #eab30855;
+  background: #eab30812;
+}
+.proposal-review.verdict-concerns .review-verdict {
+  color: #facc15;
+}
+.proposal-review.verdict-reject {
+  border-color: #ef444455;
+  background: #ef444412;
+}
+.proposal-review.verdict-reject .review-verdict {
+  color: #f87171;
+}
+
 .proposal-actions {
   display: flex;
   gap: 8px;

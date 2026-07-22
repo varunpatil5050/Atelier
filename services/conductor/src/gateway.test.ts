@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ScriptedProvider, contentHash, type ScribeFacts } from "./gateway.js";
+import { ScriptedProvider, contentHash, type ReviewFacts, type ReviewOutput, type ScribeFacts } from "./gateway.js";
 
 function promptWith(facts: Partial<ScribeFacts>): string {
   const full: ScribeFacts = {
@@ -52,6 +52,58 @@ describe("ScriptedProvider", () => {
     await expect(p.complete({ system: "s", prompt: "no facts here" })).rejects.toThrow(
       /FACTS/,
     );
+  });
+});
+
+function reviewPromptWith(facts: Partial<ReviewFacts>): string {
+  const full: ReviewFacts = {
+    symbol: "greet",
+    path: "app.ts",
+    line: 4,
+    insertLines: 6,
+    isDocComment: true,
+    namesSymbol: true,
+    callers: 2,
+    callerFiles: 1,
+    ...facts,
+  };
+  return `You are reviewer. Score this patch.\nREVIEW_FACTS: ${JSON.stringify(full)}\nRespond with JSON.`;
+}
+
+describe("ScriptedProvider — reviewer branch", () => {
+  it("approves a low-blast-radius doc comment, grounded in the call graph", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({ system: "s", prompt: reviewPromptWith({ callers: 2, callerFiles: 1 }) });
+    const out = JSON.parse(res.text) as ReviewOutput;
+    expect(out.verdict).toBe("approve");
+    expect(out.summary).toContain("Safe to apply");
+    expect(out.notes.some((n) => n.includes("2 callers across 1 file"))).toBe(true);
+    expect(out.notes.some((n) => n.includes("low blast radius"))).toBe(true);
+  });
+
+  it("raises concerns when blast radius is high", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({ system: "s", prompt: reviewPromptWith({ callers: 9, callerFiles: 4 }) });
+    const out = JSON.parse(res.text) as ReviewOutput;
+    expect(out.verdict).toBe("concerns");
+    expect(out.notes.some((n) => n.includes("high blast radius"))).toBe(true);
+    expect(out.notes.some((n) => n.includes("all 9 call sites"))).toBe(true);
+  });
+
+  it("flags a proposal that doesn't reference its target symbol", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({ system: "s", prompt: reviewPromptWith({ namesSymbol: false }) });
+    const out = JSON.parse(res.text) as ReviewOutput;
+    expect(out.verdict).toBe("concerns");
+    expect(out.notes.some((n) => n.includes("anchored to the right definition"))).toBe(true);
+  });
+
+  it("is deterministic and never auto-rejects (a human decides)", async () => {
+    const p = new ScriptedProvider();
+    const a = await p.complete({ system: "s", prompt: reviewPromptWith({ callers: 20 }) });
+    const b = await p.complete({ system: "s", prompt: reviewPromptWith({ callers: 20 }) });
+    expect(a).toEqual(b);
+    expect((JSON.parse(a.text) as ReviewOutput).verdict).not.toBe("reject");
   });
 });
 

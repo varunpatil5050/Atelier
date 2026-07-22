@@ -54,14 +54,15 @@ export class ScriptedProvider implements ModelProvider {
   readonly name = "scripted";
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    const facts = parseFacts(req.prompt);
-    const comment = composeDocComment(facts);
-    return {
-      // Tool-style structured output, exactly as a real model would be asked
-      // to produce — the caller parses JSON either way.
-      text: JSON.stringify({ comment }),
-      provider: this.name,
-    };
+    // One provider, two agent tasks — branch on which FACTS block the prompt
+    // carries, exactly as a real model would produce different tool outputs
+    // for different asks. The caller parses JSON either way.
+    if (/^REVIEW_FACTS: /m.test(req.prompt)) {
+      const review = composeReview(parseReviewFacts(req.prompt));
+      return { text: JSON.stringify(review), provider: this.name };
+    }
+    const comment = composeDocComment(parseFacts(req.prompt));
+    return { text: JSON.stringify({ comment }), provider: this.name };
   }
 }
 
@@ -75,6 +76,77 @@ function parseFacts(prompt: string): ScribeFacts {
     throw new Error("scripted provider: FACTS block incomplete");
   }
   return facts;
+}
+
+/** The FACTS block the reviewer embeds to score a proposal. */
+export interface ReviewFacts {
+  symbol: string;
+  path: string;
+  line: number;
+  insertLines: number;
+  isDocComment: boolean; // the proposal is a /** … */ block
+  namesSymbol: boolean; // the inserted text mentions the target symbol
+  callers: number;
+  callerFiles: number;
+}
+
+export interface ReviewOutput {
+  verdict: "approve" | "concerns" | "reject";
+  summary: string;
+  notes: string[];
+}
+
+/** Blast radius above this many callers gets flagged for a closer look. */
+const HIGH_BLAST_RADIUS = 3;
+
+function parseReviewFacts(prompt: string): ReviewFacts {
+  const match = prompt.match(/^REVIEW_FACTS: (.*)$/m);
+  if (!match || !match[1]) {
+    throw new Error("scripted provider: review prompt has no REVIEW_FACTS block");
+  }
+  const facts = JSON.parse(match[1]) as ReviewFacts;
+  if (!facts.symbol || !facts.path) {
+    throw new Error("scripted provider: REVIEW_FACTS block incomplete");
+  }
+  return facts;
+}
+
+/**
+ * Score a proposal from the call graph. The reviewer never auto-rejects — a
+ * human still decides; "concerns" is an advisory flag, not a veto. The signal
+ * that matters here is blast radius: a doc change touching a widely-called
+ * symbol deserves a second look that it stays true across every call site.
+ */
+function composeReview(f: ReviewFacts): ReviewOutput {
+  const notes: string[] = [];
+  let verdict: ReviewOutput["verdict"] = "approve";
+
+  const blast =
+    f.callers === 0 ? "no callers" : f.callers <= HIGH_BLAST_RADIUS ? "low blast radius" : "high blast radius";
+  notes.push(
+    `${f.callers} caller${f.callers === 1 ? "" : "s"} across ${f.callerFiles} ` +
+      `file${f.callerFiles === 1 ? "" : "s"} — ${blast}.`,
+  );
+
+  if (f.callers > HIGH_BLAST_RADIUS) {
+    verdict = "concerns";
+    notes.push(`Widely used: confirm the doc holds for all ${f.callers} call sites, not just the definition.`);
+  }
+  if (!f.namesSymbol) {
+    verdict = "concerns";
+    notes.push(`Inserted text doesn't reference \`${f.symbol}\` — verify it's anchored to the right definition.`);
+  }
+  if (!f.isDocComment) {
+    verdict = "concerns";
+    notes.push("Not a documentation comment — this changes code and needs closer review.");
+  }
+
+  const summary =
+    verdict === "approve"
+      ? `Documentation-only insertion above \`${f.symbol}\`; ${blast}. Safe to apply.`
+      : `Advisory: ${f.symbol} — ${blast}. Worth a closer look before applying.`;
+
+  return { verdict, summary, notes };
 }
 
 function composeDocComment(f: ScribeFacts): string {

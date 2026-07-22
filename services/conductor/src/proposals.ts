@@ -17,6 +17,7 @@ export interface Proposal {
   id: string;
   runId: string;
   agent: string; // presence name, e.g. "scribe (agent)"
+  symbol: string; // the target definition's name — self-describing for reviewers/UI
   path: string;
   line: number; // 1-based anchor line of the target definition
   /** Full text the agent wants to insert (already indented, newline-joined). */
@@ -29,3 +30,28 @@ export interface Proposal {
 }
 
 export const PROPOSALS_KEY = "proposals";
+
+/**
+ * Automated review of a proposal (blueprint doc 07: the Reviewer agent). The
+ * reviewer — another room participant — attaches a grounded second opinion so
+ * the human approver decides with the call graph's blast-radius analysis in
+ * front of them.
+ *
+ * Reviews live in their OWN `Y.Map("reviews")` keyed by proposalId, NOT inside
+ * the Proposal record: the reviewer and the human write concurrently (review
+ * vs decision), and LWW-per-key would otherwise let one clobber the other.
+ * Separate maps = no contention, and the pair merges by proposalId in the UI.
+ */
+export type Verdict = "approve" | "concerns" | "reject";
+
+export interface Review {
+  id: string;
+  proposalId: string;
+  reviewer: string; // presence name, e.g. "reviewer (agent)"
+  verdict: Verdict;
+  summary: string; // one-line assessment
+  notes: string[]; // grounded findings (blast radius, consistency, …)
+  createdAt: string;
+}
+
+export const REVIEWS_KEY = "reviews";

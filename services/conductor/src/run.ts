@@ -139,6 +139,7 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
         id: `prop-${runId.slice(-8)}`,
         runId,
         agent: agentUser.name,
+        symbol: hit.name,
         path: hit.path,
         line: hit.line,
         insertText,

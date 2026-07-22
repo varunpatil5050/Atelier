@@ -1,8 +1,12 @@
-// conductor: Atelier's agent orchestrator (blueprint doc 07), v0 — runs one
-// scribe task against a room and exits.
+// conductor: Atelier's agent orchestrator (blueprint doc 07), v0.
 //
+//   # scribe — a one-shot task that proposes a doc comment:
 //   pnpm --filter @atelier/conductor exec tsx src/main.ts \
 //     --room graphdemo --goal "document greet"
+//
+//   # reviewer — a long-running agent that scores proposals as they appear:
+//   pnpm --filter @atelier/conductor exec tsx src/main.ts \
+//     --room graphdemo --role reviewer
 //
 // Zero tokens: the scripted provider is the only one wired. The real
 // Anthropic provider drops in behind the same ModelProvider interface.
@@ -10,11 +14,13 @@ import { parseArgs } from "node:util";
 import { ScriptedProvider } from "./gateway.js";
 import { HttpIntel } from "./intel.js";
 import { runScribe } from "./run.js";
+import { startReviewer } from "./review.js";
 
 const { values } = parseArgs({
   allowPositionals: true, // tolerate the `--` separator pnpm forwards
   options: {
     room: { type: "string" },
+    role: { type: "string", default: "scribe" }, // scribe | reviewer
     goal: { type: "string" },
     relay: { type: "string", default: "ws://localhost:8787" },
     intel: { type: "string", default: "http://localhost:8789" },
@@ -26,38 +32,62 @@ const { values } = parseArgs({
   },
 });
 
-if (!values.room || !values.goal) {
-  console.error('usage: conductor --room <room> --goal "document <symbol>" [--relay ws://…] [--intel http://…]');
+const serviceToken = process.env.RELAY_SERVICE_SECRET;
+
+if (!values.room) {
+  console.error("usage: conductor --room <room> [--role scribe|reviewer] [--goal \"document <symbol>\"]");
   process.exit(2);
 }
 
-const serviceToken = process.env.RELAY_SERVICE_SECRET;
+if (values.role === "reviewer") {
+  // Long-running: watch the room's proposals and score them until interrupted.
+  const handle = await startReviewer({
+    relayUrl: values.relay!,
+    room: values.room,
+    provider: new ScriptedProvider(),
+    intel: new HttpIntel(values.intel!),
+    ...(serviceToken ? { serviceToken } : {}),
+    logger: (m) => console.log(m),
+  });
+  console.log(`[conductor] reviewer watching room "${values.room}" — Ctrl-C to stop`);
+  const shutdown = () => {
+    console.log(`[conductor] reviewer stopping (${handle.reviewedCount()} reviewed)`);
+    handle.stop();
+    setTimeout(() => process.exit(0), 400);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+} else {
+  if (!values.goal) {
+    console.error('usage: conductor --room <room> --goal "document <symbol>"');
+    process.exit(2);
+  }
+  if (!values["no-approval"]) {
+    console.log("[conductor] approval gate ON — waiting for a human to approve in the IDE");
+  }
 
-if (!values["no-approval"]) {
-  console.log("[conductor] approval gate ON — waiting for a human to approve in the IDE");
+  const state = await runScribe({
+    relayUrl: values.relay!,
+    room: values.room,
+    goal: values.goal,
+    provider: new ScriptedProvider(),
+    intel: new HttpIntel(values.intel!),
+    ...(serviceToken ? { serviceToken } : {}),
+    logDir: values["log-dir"]!,
+    typeDelayMs: Number(values["type-delay"]),
+    requireApproval: !values["no-approval"],
+    approvalTimeoutMs: Number(values["approval-timeout"]),
+  });
+
+  console.log(
+    `[conductor] run ${state.runId}: ${state.status}` +
+      (state.decidedBy ? ` (decided by ${state.decidedBy})` : "") +
+      (state.error ? ` — ${state.error}` : "") +
+      ` (goal: ${state.goal}; steps: ${state.steps.join("→")}; events: ${state.events})`,
+  );
+  if (state.patchedFiles.length > 0) {
+    console.log(`[conductor] patched: ${state.patchedFiles.join(", ")}`);
+  }
+  // Exit codes: 0 applied, 2 rejected by a human (a valid outcome), 1 failed.
+  process.exit(state.status === "applied" ? 0 : state.status === "rejected" ? 2 : 1);
 }
-
-const state = await runScribe({
-  relayUrl: values.relay!,
-  room: values.room,
-  goal: values.goal,
-  provider: new ScriptedProvider(),
-  intel: new HttpIntel(values.intel!),
-  ...(serviceToken ? { serviceToken } : {}),
-  logDir: values["log-dir"]!,
-  typeDelayMs: Number(values["type-delay"]),
-  requireApproval: !values["no-approval"],
-  approvalTimeoutMs: Number(values["approval-timeout"]),
-});
-
-console.log(
-  `[conductor] run ${state.runId}: ${state.status}` +
-    (state.decidedBy ? ` (decided by ${state.decidedBy})` : "") +
-    (state.error ? ` — ${state.error}` : "") +
-    ` (goal: ${state.goal}; steps: ${state.steps.join("→")}; events: ${state.events})`,
-);
-if (state.patchedFiles.length > 0) {
-  console.log(`[conductor] patched: ${state.patchedFiles.join(", ")}`);
-}
-// Exit codes: 0 applied, 2 rejected by a human (a valid outcome), 1 failed.
-process.exit(state.status === "applied" ? 0 : state.status === "rejected" ? 2 : 1);

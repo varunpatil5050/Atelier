@@ -34,6 +34,8 @@ export function stepBadge(step: string): { icon: string; color: string } {
       return { icon: "✎", color: "#eab308" };
     case "propose":
       return { icon: "⏳", color: "#f97316" };
+    case "review":
+      return { icon: "⚖", color: "#2dd4bf" };
     case "decision":
       return { icon: "⚖", color: "#22c55e" };
     case "apply":

@@ -22,11 +22,12 @@ build log: [PROGRESS.md](PROGRESS.md).
 - **Repository intelligence** (Rust + tree-sitter) — symbol search, a call graph with
   find-references and blast-radius summaries, and hybrid semantic+lexical retrieval (RRF
   fusion with provenance) — all re-indexed live as you type.
-- **Autonomous agents** — a retrieval-grounded agent joins the room as a first-class
-  participant, narrates its reasoning step by step into the room, and proposes reviewable
-  edits gated behind human approval in the IDE. Runs are event-sourced; the scripted
-  model provider spends **zero tokens**, and a real model drops in behind the same
-  interface.
+- **Autonomous agents (multi-agent)** — retrieval-grounded agents join the room as
+  first-class participants and narrate their reasoning into it. A **scribe** proposes
+  reviewable edits gated behind human approval; a **reviewer** independently scores each
+  proposal by call-graph blast radius and attaches a verdict to the card, so the human
+  decides with a second opinion in view. Runs are event-sourced; the scripted model
+  provider spends **zero tokens**, and a real model drops in behind the same interface.
 - **Replayable timeline** — the relay records every room's history; scrub any session and
   watch the document rebuild moment by moment — keystrokes, agent edits, the agent's own
   reasoning, and who was present, all faithful to that point in time.
@@ -52,7 +53,7 @@ replayable. (Full detail: [BLUEPRINT.md](BLUEPRINT.md) and `docs/01–15`.)
 flowchart LR
   subgraph P["Participants — one binary WS protocol, one client library"]
     IDE["Web IDE<br/>Next.js · Monaco · xterm · Yjs"]
-    AGT["conductor agent<br/>scribe + model-gateway"]
+    AGT["conductor agents<br/>scribe + reviewer · model-gateway"]
     DFS["doc-fs<br/>CRDT ⇄ filesystem"]
   end
 
@@ -139,10 +140,12 @@ beaconed to core-api as the keystroke-RTT SLI on the Grafana dashboard.
 (purple presence chip) → pulls grounding facts from the indexer (definition, callers,
 blast radius) → prompts the model-gateway (scripted provider — zero tokens) → writes a
 **Proposal** into the shared doc and narrates every step into `agent_trace` (visible live
-in the sidebar) → a human clicks **Approve** in the IDE → the agent types the patch into
-the CRDT, re-anchored against concurrent edits → doc-fs persists it, the timeline records
-it, and the event-sourced run log folds to `applied`. Rejecting leaves the document
-untouched; walking away times the proposal out.
+in the sidebar). A **reviewer** agent watching the room independently scores the proposal
+by call-graph blast radius and attaches a verdict to the card (`approve` / `concerns`) →
+a human clicks **Approve** in the IDE → the scribe types the patch into the CRDT,
+re-anchored against concurrent edits → doc-fs persists it, the timeline records it, and the
+event-sourced run log folds to `applied`. Rejecting leaves the document untouched; walking
+away times the proposal out.
 
 ## Quickstart
 
