@@ -48,7 +48,8 @@ export class DocFsSync {
   private readonly selfWrites = new Map<string, string>();
   private readonly docTimers = new Map<string, NodeJS.Timeout>();
   private readonly diskTimers = new Map<string, NodeJS.Timeout>();
-  private watcher: FSWatcher | null = null;
+  /** One watcher per directory (root + every subdir) — see watchTree. */
+  private readonly watchers = new Map<string, FSWatcher>();
   private stopped = false;
 
   constructor(opts: DocFsOptions) {
@@ -63,15 +64,58 @@ export class DocFsSync {
     await this.waitSynced();
     await this.reconcile();
     this.files.observeDeep(this.onDocEvents);
-    this.watcher = watch(this.dir, { recursive: true }, (_evt, filename) => {
-      if (filename) this.onFsEvent(filename.toString());
-    });
+    await this.watchTree(this.dir);
     this.log("doc-fs started", { dir: this.dir, files: this.files.size });
+  }
+
+  /**
+   * Recursively watch `absDir` and every subdirectory. A cross-platform
+   * stand-in for `fs.watch(dir, { recursive: true })`, whose recursive mode is
+   * unreliable for subdirectories on Linux (inotify) — it silently misses
+   * events for files like `src/hello.ts`. We watch each directory explicitly
+   * and add watchers for new subdirectories as they appear, so nested edits
+   * sync on every platform (Linux is the deploy target).
+   */
+  private async watchTree(absDir: string): Promise<void> {
+    if (this.stopped || this.watchers.has(absDir)) return;
+    let w: FSWatcher;
+    try {
+      w = watch(absDir, (evt, filename) => {
+        if (!filename) return;
+        const abs = path.join(absDir, filename.toString());
+        if (evt === "rename") void this.maybeWatchNewDir(abs); // a new subdir needs its own watcher
+        this.onFsEvent(path.relative(this.dir, abs)); // onFsEvent normalizes + filters ignored paths
+      });
+    } catch {
+      return; // directory vanished between readdir and watch
+    }
+    this.watchers.set(absDir, w);
+
+    const entries = await fs.readdir(absDir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      const childAbs = path.join(absDir, e.name);
+      if (isIgnored(path.relative(this.dir, childAbs).split(path.sep).join("/"))) continue;
+      await this.watchTree(childAbs);
+    }
+  }
+
+  /** Start watching a directory that appeared at runtime (mkdir, git checkout). */
+  private async maybeWatchNewDir(abs: string): Promise<void> {
+    if (this.watchers.has(abs)) return;
+    const rel = path.relative(this.dir, abs).split(path.sep).join("/");
+    if (rel && isIgnored(rel)) return;
+    try {
+      if ((await fs.stat(abs)).isDirectory()) await this.watchTree(abs);
+    } catch {
+      // not a directory, or already removed — nothing to watch
+    }
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
-    this.watcher?.close();
+    for (const w of this.watchers.values()) w.close();
+    this.watchers.clear();
     for (const t of this.diskTimers.values()) clearTimeout(t);
     this.diskTimers.clear();
     // Flush pending doc→disk writes so no acknowledged edit is lost.
