@@ -30,6 +30,10 @@ export function stepBadge(step: string): { icon: string; color: string } {
       return { icon: "⌖", color: "#6d9eff" };
     case "delegate":
       return { icon: "⇢", color: "#f59e0b" };
+    case "run":
+      return { icon: "▷", color: "#38bdf8" };
+    case "test":
+      return { icon: "🧪", color: "#38bdf8" };
     case "retrieve":
       return { icon: "🔍", color: "#14b8a6" };
     case "generate":

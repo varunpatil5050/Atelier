@@ -22,14 +22,13 @@ build log: [PROGRESS.md](PROGRESS.md).
 - **Repository intelligence** (Rust + tree-sitter) — symbol search, a call graph with
   find-references and blast-radius summaries, and hybrid semantic+lexical retrieval (RRF
   fusion with provenance) — all re-indexed live as you type.
-- **Autonomous agents (multi-agent)** — retrieval-grounded agents join the room as
-  first-class participants and narrate their reasoning into it. A **planner** turns a
-  free-form goal (`document all`, `document app.ts`) into a plan and delegates to a
-  **scribe**, which proposes reviewable edits gated behind human approval; a **reviewer**
-  independently scores each proposal by call-graph blast radius and attaches a verdict to the
-  card, so the human decides with a second opinion in view. Runs are event-sourced; the
-  scripted model provider spends **zero tokens**, and a real model drops in behind the same
-  interface.
+- **Autonomous agents (multi-agent)** — a full Planner→Coder→Tester→Reviewer team joins the
+  room as first-class participants and narrates its reasoning into it. A **planner** turns a
+  free-form goal (`document all`, `document app.ts`) into a plan and delegates to a **scribe**,
+  which proposes reviewable edits gated behind human approval; a **reviewer** independently
+  scores each proposal by call-graph blast radius; a **tester** runs the workspace's code and
+  reports pass/fail into the room. Runs are event-sourced; the scripted model provider spends
+  **zero tokens**, and a real model drops in behind the same interface.
 - **Replayable timeline** — the relay records every room's history; scrub any session and
   watch the document rebuild moment by moment — keystrokes, agent edits, the agent's own
   reasoning, and who was present, all faithful to that point in time.
@@ -55,7 +54,7 @@ replayable. (Full detail: [BLUEPRINT.md](BLUEPRINT.md) and `docs/01–15`.)
 flowchart LR
   subgraph P["Participants — one binary WS protocol, one client library"]
     IDE["Web IDE<br/>Next.js · Monaco · xterm · Yjs"]
-    AGT["conductor agents<br/>planner + scribe + reviewer · model-gateway"]
+    AGT["conductor agents<br/>planner · scribe · reviewer · tester"]
     DFS["doc-fs<br/>CRDT ⇄ filesystem"]
   end
 
@@ -192,6 +191,8 @@ pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --goal "docume
 pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role reviewer
 # planner: decomposes a free-form goal and delegates to a scribe per symbol.
 pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role planner --goal "document all"
+# tester: runs the workspace's command and reports pass/fail into the room.
+pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role tester --cmd "node test.js" --cwd ./data/workspaces/demo
 # (--no-approval applies directly, skipping the human gate.)
 ```
 

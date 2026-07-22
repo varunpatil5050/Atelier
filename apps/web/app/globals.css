@@ -906,6 +906,65 @@ button {
   background: var(--bg-hover);
 }
 
+/* ── tester agent: latest test result ──────────────────────────────── */
+.test-status {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+}
+.test-status-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font-size: 11px;
+}
+.test-badge {
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.test-status.test-pass .test-badge {
+  color: #4ade80;
+}
+.test-status.test-fail .test-badge {
+  color: #f87171;
+}
+.test-status.test-fail {
+  background: #ef444410;
+}
+.test-cmd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.test-meta {
+  color: var(--text-dim);
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+.test-output {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 22vh;
+  overflow: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: #0d0f13;
+  border-top: 1px solid var(--border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ── agent reasoning (live feed + replay lane) ──────────────────────── */
 .agent-activity {
   flex: 0 0 auto;

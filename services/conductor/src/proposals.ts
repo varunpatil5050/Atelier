@@ -55,3 +55,23 @@ export interface Review {
 }
 
 export const REVIEWS_KEY = "reviews";
+
+/**
+ * A test run's outcome (blueprint doc 07: the Tester agent). The tester runs
+ * the workspace's command and records the result in the room's shared
+ * `Y.Map("tests")` — so every participant sees pass/fail live and it rides the
+ * replay timeline. The web mirrors this shape in TestStatus.tsx.
+ */
+export interface TestResult {
+  id: string;
+  runId: string;
+  tester: string; // presence name, e.g. "tester (agent)"
+  command: string;
+  status: "pass" | "fail";
+  exitCode: number;
+  output: string; // tail of stderr (or stdout), for a peek in the UI
+  durationMs: number;
+  at: string;
+}
+
+export const TESTS_KEY = "tests";

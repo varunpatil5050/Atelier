@@ -14,6 +14,7 @@ import PreviewPane from "./PreviewPane";
 import SymbolSearch from "./SymbolSearch";
 import ProposalPanel from "./ProposalPanel";
 import AgentActivity from "./AgentActivity";
+import TestStatus from "./TestStatus";
 
 type MonacoModule = typeof import("../editor/monacoSetup");
 
@@ -314,6 +315,7 @@ export default function Ide({ room }: { room: string }) {
               </li>
             ))}
           </ul>
+          {provider && <TestStatus provider={provider} />}
           {provider && <AgentActivity provider={provider} />}
         </aside>
 

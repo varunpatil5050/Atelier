@@ -16,13 +16,17 @@ import { HttpIntel } from "./intel.js";
 import { runScribe } from "./run.js";
 import { runPlan } from "./plan.js";
 import { startReviewer } from "./review.js";
+import { runTester } from "./tester.js";
 
 const { values } = parseArgs({
   allowPositionals: true, // tolerate the `--` separator pnpm forwards
   options: {
     room: { type: "string" },
-    role: { type: "string", default: "scribe" }, // scribe | reviewer | planner
+    role: { type: "string", default: "scribe" }, // scribe | reviewer | planner | tester
     goal: { type: "string" },
+    cmd: { type: "string" }, // tester: the command to run
+    cwd: { type: "string", default: "." }, // tester: working directory
+    "test-timeout": { type: "string", default: "60000" },
     relay: { type: "string", default: "ws://localhost:8787" },
     intel: { type: "string", default: "http://localhost:8789" },
     "log-dir": { type: "string", default: "./data/agent-runs" },
@@ -36,8 +40,26 @@ const { values } = parseArgs({
 const serviceToken = process.env.RELAY_SERVICE_SECRET;
 
 if (!values.room) {
-  console.error('usage: conductor --room <room> [--role scribe|reviewer|planner] [--goal "…"]');
+  console.error('usage: conductor --room <room> [--role scribe|reviewer|planner|tester] [--goal "…"] [--cmd "…"]');
   process.exit(2);
+}
+
+if (values.role === "tester") {
+  if (!values.cmd) {
+    console.error('usage: conductor --room <room> --role tester --cmd "npm test" [--cwd <dir>]');
+    process.exit(2);
+  }
+  const state = await runTester({
+    relayUrl: values.relay!,
+    room: values.room,
+    cmd: values.cmd,
+    cwd: values.cwd!,
+    ...(serviceToken ? { serviceToken } : {}),
+    timeoutMs: Number(values["test-timeout"]),
+    logger: (m) => console.log(m),
+  });
+  console.log(`[conductor] test ${state.runId}: ${state.status} (exit ${state.exitCode})`);
+  process.exit(state.status === "pass" ? 0 : 1);
 }
 
 if (values.role === "planner") {
