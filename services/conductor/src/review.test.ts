@@ -80,6 +80,9 @@ class FakeIntel implements Intel {
   async search(): Promise<SymbolHit[]> {
     return [];
   }
+  async symbols(): Promise<SymbolHit[]> {
+    return [];
+  }
   async refs(name: string): Promise<Refs> {
     if (name === "hotpath") {
       return { name, confidence: "heuristic", count: 9, files: 4, callers: [{ path: "a.ts", line: 1 }] };

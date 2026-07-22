@@ -123,6 +123,7 @@ fn main() {
         let router = Router::new()
             .route("/healthz", get(health))
             .route("/v1/search", get(search))
+            .route("/v1/symbols", get(symbols))
             .route("/v1/refs", get(refs))
             .route("/v1/retrieve", get(retrieve))
             .route("/v1/stats", get(stats_handler))
@@ -254,6 +255,26 @@ async fn search(
         "query": params.q,
         "tookUs": started.elapsed().as_micros(),
         "results": hits,
+    }))
+}
+
+#[derive(Deserialize)]
+struct SymbolsParams {
+    path: Option<String>,
+}
+
+/// Enumerate symbols (optionally within one file) — the Planner agent expands
+/// "document all" / "document <file>" into concrete tasks from this.
+async fn symbols(
+    State(app): State<Arc<App>>,
+    Query(params): Query<SymbolsParams>,
+) -> Json<serde_json::Value> {
+    let started = Instant::now();
+    let syms = app.index.read().unwrap().list_symbols(params.path.as_deref());
+    Json(json!({
+        "tookUs": started.elapsed().as_micros(),
+        "count": syms.len(),
+        "symbols": syms,
     }))
 }
 

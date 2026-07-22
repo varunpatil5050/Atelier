@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ScriptedProvider, contentHash, type ReviewFacts, type ReviewOutput, type ScribeFacts } from "./gateway.js";
+import {
+  ScriptedProvider,
+  contentHash,
+  parsePlanDirective,
+  type PlanDirective,
+  type ReviewFacts,
+  type ReviewOutput,
+  type ScribeFacts,
+} from "./gateway.js";
 
 function promptWith(facts: Partial<ScribeFacts>): string {
   const full: ScribeFacts = {
@@ -104,6 +112,37 @@ describe("ScriptedProvider — reviewer branch", () => {
     const b = await p.complete({ system: "s", prompt: reviewPromptWith({ callers: 20 }) });
     expect(a).toEqual(b);
     expect((JSON.parse(a.text) as ReviewOutput).verdict).not.toBe("reject");
+  });
+});
+
+describe("parsePlanDirective (planner branch)", () => {
+  it("decomposes 'document all' / 'everything' into an all-scope directive", () => {
+    for (const g of ["document all", "document everything", "document all functions", "document all symbols"]) {
+      expect(parsePlanDirective(g)).toEqual({ action: "document", scope: "all" });
+    }
+  });
+
+  it("routes a filename to file scope", () => {
+    expect(parsePlanDirective("document app.ts")).toEqual({ action: "document", scope: "file", target: "app.ts" });
+    expect(parsePlanDirective("document src/util.go")).toEqual({
+      action: "document",
+      scope: "file",
+      target: "src/util.go",
+    });
+  });
+
+  it("routes a bare identifier to symbol scope", () => {
+    expect(parsePlanDirective("document greet")).toEqual({ action: "document", scope: "symbol", target: "greet" });
+  });
+
+  it("throws on an unsupported goal", () => {
+    expect(() => parsePlanDirective("refactor everything")).toThrow(/unsupported goal/);
+  });
+
+  it("is reachable through the ScriptedProvider PLAN_GOAL branch", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({ system: "s", prompt: "plan this\nPLAN_GOAL: document all\ndone" });
+    expect(JSON.parse(res.text) as PlanDirective).toEqual({ action: "document", scope: "all" });
   });
 });
 

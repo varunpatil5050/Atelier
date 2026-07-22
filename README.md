@@ -23,11 +23,13 @@ build log: [PROGRESS.md](PROGRESS.md).
   find-references and blast-radius summaries, and hybrid semantic+lexical retrieval (RRF
   fusion with provenance) — all re-indexed live as you type.
 - **Autonomous agents (multi-agent)** — retrieval-grounded agents join the room as
-  first-class participants and narrate their reasoning into it. A **scribe** proposes
-  reviewable edits gated behind human approval; a **reviewer** independently scores each
-  proposal by call-graph blast radius and attaches a verdict to the card, so the human
-  decides with a second opinion in view. Runs are event-sourced; the scripted model
-  provider spends **zero tokens**, and a real model drops in behind the same interface.
+  first-class participants and narrate their reasoning into it. A **planner** turns a
+  free-form goal (`document all`, `document app.ts`) into a plan and delegates to a
+  **scribe**, which proposes reviewable edits gated behind human approval; a **reviewer**
+  independently scores each proposal by call-graph blast radius and attaches a verdict to the
+  card, so the human decides with a second opinion in view. Runs are event-sourced; the
+  scripted model provider spends **zero tokens**, and a real model drops in behind the same
+  interface.
 - **Replayable timeline** — the relay records every room's history; scrub any session and
   watch the document rebuild moment by moment — keystrokes, agent edits, the agent's own
   reasoning, and who was present, all faithful to that point in time.
@@ -53,7 +55,7 @@ replayable. (Full detail: [BLUEPRINT.md](BLUEPRINT.md) and `docs/01–15`.)
 flowchart LR
   subgraph P["Participants — one binary WS protocol, one client library"]
     IDE["Web IDE<br/>Next.js · Monaco · xterm · Yjs"]
-    AGT["conductor agents<br/>scribe + reviewer · model-gateway"]
+    AGT["conductor agents<br/>planner + scribe + reviewer · model-gateway"]
     DFS["doc-fs<br/>CRDT ⇄ filesystem"]
   end
 
@@ -136,16 +138,19 @@ beaconed to core-api as the keystroke-RTT SLI on the Grafana dashboard.
 
 ### Life of an agent run
 
-`conductor --goal "document greet"` → the agent joins the room over the same protocol
-(purple presence chip) → pulls grounding facts from the indexer (definition, callers,
-blast radius) → prompts the model-gateway (scripted provider — zero tokens) → writes a
-**Proposal** into the shared doc and narrates every step into `agent_trace` (visible live
-in the sidebar). A **reviewer** agent watching the room independently scores the proposal
-by call-graph blast radius and attaches a verdict to the card (`approve` / `concerns`) →
-a human clicks **Approve** in the IDE → the scribe types the patch into the CRDT,
-re-anchored against concurrent edits → doc-fs persists it, the timeline records it, and the
-event-sourced run log folds to `applied`. Rejecting leaves the document untouched; walking
-away times the proposal out.
+`conductor --role planner --goal "document all"` → the **planner** joins the room, asks the
+model-gateway to interpret the goal, and enumerates the workspace's symbols → for each it
+**delegates to a scribe**. Each scribe joins over the same protocol (purple presence chip) →
+pulls grounding facts from the indexer (definition, callers, blast radius) → prompts the
+model-gateway (scripted provider — zero tokens) → writes a **Proposal** into the shared doc
+and narrates every step into `agent_trace` (visible live in the sidebar). A **reviewer**
+agent watching the room independently scores each proposal by call-graph blast radius and
+attaches a verdict to the card (`approve` / `concerns`) → a human clicks **Approve** in the
+IDE → the scribe types the patch into the CRDT, re-anchored against concurrent edits →
+doc-fs persists it, the timeline records it, and the event-sourced run log folds to
+`applied`. Planner, scribe, and reviewer reasoning all interleave in the one trace, live and
+in replay. Rejecting leaves the document untouched; walking away times the proposal out.
+(For a single symbol, skip the planner: `conductor --goal "document greet"`.)
 
 ## Quickstart
 
@@ -180,11 +185,14 @@ pnpm --filter @atelier/doc-fs exec tsx src/main.ts --room demo --dir ./data/work
 cargo run --release --manifest-path services/indexer/Cargo.toml -- --dir ./data/workspaces/demo
 # → http://localhost:8789; the IDE's "Intelligence" panel appears when it's reachable
 
-# one-shot (optional) — run an agent: it joins the room and proposes a doc comment
+# agents (optional, zero tokens — scripted provider). Each joins the room as a participant.
+# scribe: proposes a doc comment for one symbol; PARKS until you approve in the IDE's card.
 pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --goal "document greet"
-# zero tokens (scripted provider). By default it PARKS on a proposal — approve or
-# reject it in the IDE's review card; only then does "scribe (agent)" type it in.
-# (--no-approval applies directly, skipping the gate.)
+# reviewer: long-running — scores each proposal by call-graph blast radius (run alongside).
+pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role reviewer
+# planner: decomposes a free-form goal and delegates to a scribe per symbol.
+pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role planner --goal "document all"
+# (--no-approval applies directly, skipping the human gate.)
 ```
 
 With both running, the editor, the terminal, and the filesystem agree: edit `main.ts` in the

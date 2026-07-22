@@ -23,6 +23,9 @@ export interface Refs {
 export interface Intel {
   search(q: string, limit?: number): Promise<SymbolHit[]>;
   refs(name: string): Promise<Refs>;
+  /** Enumerate symbols (optionally within one file) — the Planner expands
+   * "document all" / "document <file>" from this. */
+  symbols(path?: string): Promise<SymbolHit[]>;
 }
 
 export class HttpIntel implements Intel {
@@ -35,6 +38,16 @@ export class HttpIntel implements Intel {
     if (!res.ok) throw new Error(`intel search: ${res.status}`);
     const { results } = (await res.json()) as { results: SymbolHit[] };
     return results;
+  }
+
+  async symbols(path?: string): Promise<SymbolHit[]> {
+    const url = path
+      ? `${this.base}/v1/symbols?path=${encodeURIComponent(path)}`
+      : `${this.base}/v1/symbols`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`intel symbols: ${res.status}`);
+    const { symbols } = (await res.json()) as { symbols: SymbolHit[] };
+    return symbols;
   }
 
   async refs(name: string): Promise<Refs> {

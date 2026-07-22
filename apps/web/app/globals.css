@@ -957,6 +957,16 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.agent-step-agent {
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0.75;
 }
 .agent-step-detail {
   color: var(--text-dim);

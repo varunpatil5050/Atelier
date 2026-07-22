@@ -54,9 +54,15 @@ export class ScriptedProvider implements ModelProvider {
   readonly name = "scripted";
 
   async complete(req: CompletionRequest): Promise<CompletionResponse> {
-    // One provider, two agent tasks — branch on which FACTS block the prompt
+    // One provider, three agent tasks — branch on which block the prompt
     // carries, exactly as a real model would produce different tool outputs
-    // for different asks. The caller parses JSON either way.
+    // for different asks. The caller parses JSON either way. (The scripted
+    // planner "understands" the goal via a keyword matcher; a real model's
+    // free-form decomposition drops in behind this same branch.)
+    const planMatch = req.prompt.match(/^PLAN_GOAL: (.*)$/m);
+    if (planMatch && planMatch[1] !== undefined) {
+      return { text: JSON.stringify(parsePlanDirective(planMatch[1])), provider: this.name };
+    }
     if (/^REVIEW_FACTS: /m.test(req.prompt)) {
       const review = composeReview(parseReviewFacts(req.prompt));
       return { text: JSON.stringify(review), provider: this.name };
@@ -76,6 +82,45 @@ function parseFacts(prompt: string): ScribeFacts {
     throw new Error("scripted provider: FACTS block incomplete");
   }
   return facts;
+}
+
+/**
+ * A plan directive — the structured intent the Planner extracts from a
+ * free-form goal. v0 has one action (document); scope selects how far it
+ * reaches. More actions (test, refactor) arrive with more Coder capabilities.
+ */
+export interface PlanDirective {
+  action: "document";
+  scope: "symbol" | "file" | "all";
+  target?: string; // symbol name (scope=symbol) or file path (scope=file)
+}
+
+const FILE_RE = /\.(ts|tsx|js|jsx|py|go)$/i;
+
+/**
+ * Interpret a goal into a directive. The scripted matcher recognizes a small
+ * grammar; a real model generalizes this to arbitrary intent behind the same
+ * PLAN_GOAL branch.
+ *   "document all" / "document everything" / "document all functions" → all
+ *   "document app.ts"                                                  → file
+ *   "document greet"                                                   → symbol
+ */
+export function parsePlanDirective(goal: string): PlanDirective {
+  const g = goal.trim();
+  if (/^document\s+(all|everything)(\s+functions?|\s+symbols?)?$/i.test(g)) {
+    return { action: "document", scope: "all" };
+  }
+  const file = g.match(/^document\s+(\S+)$/i);
+  if (file && file[1] && FILE_RE.test(file[1])) {
+    return { action: "document", scope: "file", target: file[1] };
+  }
+  const sym = g.match(/^document\s+([A-Za-z_$][\w$]*)$/);
+  if (sym && sym[1]) {
+    return { action: "document", scope: "symbol", target: sym[1] };
+  }
+  throw new Error(
+    `unsupported goal ${JSON.stringify(goal)} — try "document <symbol>", "document <file>", or "document all"`,
+  );
 }
 
 /** The FACTS block the reviewer embeds to score a proposal. */

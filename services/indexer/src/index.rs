@@ -205,6 +205,22 @@ impl SymbolIndex {
         }
     }
 
+    /// List every symbol (optionally within one file), ordered by (path, line).
+    /// The Planner agent uses this to expand a goal like "document all" into a
+    /// concrete task per symbol.
+    pub fn list_symbols(&self, path_filter: Option<&str>) -> Vec<Symbol> {
+        let mut out: Vec<Symbol> = Vec::new();
+        for symbols in self.symbols.values() {
+            for sym in symbols {
+                if path_filter.is_none_or(|p| sym.path == p) {
+                    out.push(sym.clone());
+                }
+            }
+        }
+        out.sort_by(|a, b| a.path.cmp(&b.path).then_with(|| a.line.cmp(&b.line)));
+        out
+    }
+
     /// Ranked search: exact > prefix > substring > subsequence, with shorter
     /// names and definition-like kinds breaking ties.
     pub fn search(&self, query: &str, limit: usize) -> Vec<Hit> {
@@ -352,6 +368,24 @@ mod tests {
         let idx = index();
         let hits = idx.search("gsvc", 10);
         assert!(hits.iter().any(|h| h.symbol.name == "GreetingService"));
+    }
+
+    #[test]
+    fn list_symbols_enumerates_all_and_filters_by_path() {
+        let mut idx = index(); // 4 symbols in a.ts
+        put(&mut idx, "b.ts", only_symbols(vec![sym("helper", "fn", "b.ts")]));
+
+        let all = idx.list_symbols(None);
+        assert_eq!(all.len(), 5);
+        // ordered by (path, line): a.ts entries before b.ts
+        assert_eq!(all.first().unwrap().path, "a.ts");
+        assert_eq!(all.last().unwrap().path, "b.ts");
+
+        let only_b = idx.list_symbols(Some("b.ts"));
+        assert_eq!(only_b.len(), 1);
+        assert_eq!(only_b[0].name, "helper");
+
+        assert!(idx.list_symbols(Some("nope.ts")).is_empty());
     }
 
     #[test]

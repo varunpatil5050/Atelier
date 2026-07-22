@@ -14,13 +14,14 @@ import { parseArgs } from "node:util";
 import { ScriptedProvider } from "./gateway.js";
 import { HttpIntel } from "./intel.js";
 import { runScribe } from "./run.js";
+import { runPlan } from "./plan.js";
 import { startReviewer } from "./review.js";
 
 const { values } = parseArgs({
   allowPositionals: true, // tolerate the `--` separator pnpm forwards
   options: {
     room: { type: "string" },
-    role: { type: "string", default: "scribe" }, // scribe | reviewer
+    role: { type: "string", default: "scribe" }, // scribe | reviewer | planner
     goal: { type: "string" },
     relay: { type: "string", default: "ws://localhost:8787" },
     intel: { type: "string", default: "http://localhost:8789" },
@@ -35,11 +36,38 @@ const { values } = parseArgs({
 const serviceToken = process.env.RELAY_SERVICE_SECRET;
 
 if (!values.room) {
-  console.error("usage: conductor --room <room> [--role scribe|reviewer] [--goal \"document <symbol>\"]");
+  console.error('usage: conductor --room <room> [--role scribe|reviewer|planner] [--goal "…"]');
   process.exit(2);
 }
 
-if (values.role === "reviewer") {
+if (values.role === "planner") {
+  if (!values.goal) {
+    console.error('usage: conductor --room <room> --role planner --goal "document all" | "document <file>" | "document <symbol>"');
+    process.exit(2);
+  }
+  if (!values["no-approval"]) {
+    console.log("[conductor] approval gate ON — approve each task in the IDE");
+  }
+  const result = await runPlan({
+    relayUrl: values.relay!,
+    room: values.room,
+    goal: values.goal,
+    provider: new ScriptedProvider(),
+    intel: new HttpIntel(values.intel!),
+    ...(serviceToken ? { serviceToken } : {}),
+    logDir: values["log-dir"]!,
+    typeDelayMs: Number(values["type-delay"]),
+    requireApproval: !values["no-approval"],
+    approvalTimeoutMs: Number(values["approval-timeout"]),
+    logger: (m) => console.log(m),
+  });
+  console.log(
+    `[conductor] plan ${result.runId}: ${result.status} ` +
+      `(goal: ${result.goal}; scope: ${result.directive.scope}; tasks: ${result.tasks.length}; ` +
+      `applied ${result.applied}, rejected ${result.rejected}, failed ${result.failed})`,
+  );
+  process.exit(result.status === "completed" && result.failed === 0 ? 0 : 1);
+} else if (values.role === "reviewer") {
   // Long-running: watch the room's proposals and score them until interrupted.
   const handle = await startReviewer({
     relayUrl: values.relay!,

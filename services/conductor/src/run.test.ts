@@ -104,6 +104,9 @@ class FakeIntel implements Intel {
       callers: [{ path: "main.ts", line: 5 }],
     };
   }
+  async symbols(): Promise<SymbolHit[]> {
+    return this.search();
+  }
 }
 
 describe("scribe agent against a real relay", () => {
@@ -297,6 +300,7 @@ describe("scribe agent against a real relay", () => {
     const emptyIntel: Intel = {
       search: async () => [],
       refs: async () => ({ name: "", confidence: "heuristic", count: 0, files: 0, callers: [] }),
+      symbols: async () => [],
     };
     const state = await runScribe({
       relayUrl,

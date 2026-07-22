@@ -2,6 +2,11 @@
 
 import { stepBadge, type AgentStep } from "../agentTrace";
 
+/** "scribe (agent)" → "scribe" — a compact label for the shared feed. */
+function shortAgent(name: string): string {
+  return name.replace(/\s*\(agent\)\s*$/, "");
+}
+
 /**
  * Presentational list of agent reasoning steps — shared by the live activity
  * feed (IDE sidebar) and the replay lane, so a session looks the same live
@@ -30,6 +35,7 @@ export default function AgentStepList({
             <span className="agent-step-body">
               <span className="agent-step-kind" style={{ color: badge.color }}>
                 {s.step}
+                <span className="agent-step-agent">{shortAgent(s.agent)}</span>
               </span>
               <span className="agent-step-detail">{s.detail}</span>
             </span>
