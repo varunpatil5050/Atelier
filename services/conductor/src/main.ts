@@ -17,12 +17,13 @@ import { runScribe } from "./run.js";
 import { runPlan } from "./plan.js";
 import { startReviewer } from "./review.js";
 import { runTester } from "./tester.js";
+import { runDebugger } from "./debug.js";
 
 const { values } = parseArgs({
   allowPositionals: true, // tolerate the `--` separator pnpm forwards
   options: {
     room: { type: "string" },
-    role: { type: "string", default: "scribe" }, // scribe | reviewer | planner | tester
+    role: { type: "string", default: "scribe" }, // scribe | reviewer | planner | tester | debugger
     goal: { type: "string" },
     cmd: { type: "string" }, // tester: the command to run
     cwd: { type: "string", default: "." }, // tester: working directory
@@ -42,6 +43,28 @@ const serviceToken = process.env.RELAY_SERVICE_SECRET;
 if (!values.room) {
   console.error('usage: conductor --room <room> [--role scribe|reviewer|planner|tester] [--goal "…"] [--cmd "…"]');
   process.exit(2);
+}
+
+if (values.role === "debugger") {
+  if (!values["no-approval"]) {
+    console.log("[conductor] approval gate ON — approve the fix in the IDE");
+  }
+  const state = await runDebugger({
+    relayUrl: values.relay!,
+    room: values.room,
+    provider: new ScriptedProvider(),
+    intel: new HttpIntel(values.intel!),
+    ...(serviceToken ? { serviceToken } : {}),
+    requireApproval: !values["no-approval"],
+    approvalTimeoutMs: Number(values["approval-timeout"]),
+    logger: (m) => console.log(m),
+  });
+  console.log(
+    `[conductor] debug ${state.runId}: ${state.status}` +
+      (state.fn ? ` (${state.fn})` : "") +
+      (state.error ? ` — ${state.error}` : ""),
+  );
+  process.exit(state.status === "applied" || state.status === "proposed" ? 0 : 1);
 }
 
 if (values.role === "tester") {

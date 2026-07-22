@@ -34,6 +34,12 @@ export function stepBadge(step: string): { icon: string; color: string } {
       return { icon: "▷", color: "#38bdf8" };
     case "test":
       return { icon: "🧪", color: "#38bdf8" };
+    case "diagnose":
+      return { icon: "🩺", color: "#fb7185" };
+    case "locate":
+      return { icon: "◎", color: "#fb7185" };
+    case "repair":
+      return { icon: "🔧", color: "#fb7185" };
     case "retrieve":
       return { icon: "🔍", color: "#14b8a6" };
     case "generate":

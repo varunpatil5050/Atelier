@@ -63,6 +63,9 @@ export class ScriptedProvider implements ModelProvider {
     if (planMatch && planMatch[1] !== undefined) {
       return { text: JSON.stringify(parsePlanDirective(planMatch[1])), provider: this.name };
     }
+    if (/^DEBUG_FACTS: /m.test(req.prompt)) {
+      return { text: JSON.stringify(repair(parseDebugFacts(req.prompt))), provider: this.name };
+    }
     if (/^REVIEW_FACTS: /m.test(req.prompt)) {
       const review = composeReview(parseReviewFacts(req.prompt));
       return { text: JSON.stringify(review), provider: this.name };
@@ -121,6 +124,86 @@ export function parsePlanDirective(goal: string): PlanDirective {
   throw new Error(
     `unsupported goal ${JSON.stringify(goal)} — try "document <symbol>", "document <file>", or "document all"`,
   );
+}
+
+/**
+ * The facts the debugger gathers about a failing test for a candidate repair.
+ * v0 targets the recognizable class of single-return binary-operator functions
+ * — the debugger has read the real assertion (inputs + expected) and the real
+ * function body, so the repair is a bounded, verifiable search, not a guess.
+ */
+export interface DebugFacts {
+  fn: string;
+  params: string[]; // parameter names, in order
+  args: number[]; // the failing call's arguments
+  expected: number; // what the assertion wanted
+  actual: number; // what the function returned
+  bodyLine: string; // the `return …;` line (with its indentation)
+  returnExpr: string; // the returned expression, e.g. "a - b"
+}
+
+export interface DebugOutput {
+  fixable: boolean;
+  fixedLine?: string; // the repaired bodyLine (indentation preserved)
+  was?: string;
+  explanation: string;
+}
+
+const OPS: Record<string, (a: number, b: number) => number> = {
+  "+": (a, b) => a + b,
+  "-": (a, b) => a - b,
+  "*": (a, b) => a * b,
+  "/": (a, b) => a / b,
+};
+
+function parseDebugFacts(prompt: string): DebugFacts {
+  const match = prompt.match(/^DEBUG_FACTS: (.*)$/m);
+  if (!match || !match[1]) {
+    throw new Error("scripted provider: debug prompt has no DEBUG_FACTS block");
+  }
+  const facts = JSON.parse(match[1]) as DebugFacts;
+  if (!facts.fn || !Array.isArray(facts.params) || !Array.isArray(facts.args)) {
+    throw new Error("scripted provider: DEBUG_FACTS block incomplete");
+  }
+  return facts;
+}
+
+/**
+ * Repair a single-return binary-op function by searching the operator space for
+ * the one that yields the expected value on the failing inputs, then verifying
+ * it. Honest v0: if the body isn't `<param> OP <param>` or no operator fits,
+ * it returns fixable=false rather than guessing.
+ */
+function repair(f: DebugFacts): DebugOutput {
+  const m = f.returnExpr.match(/^\s*([A-Za-z_$][\w$]*)\s*([-+*/])\s*([A-Za-z_$][\w$]*)\s*$/);
+  if (!m) {
+    return { fixable: false, explanation: `${f.fn}: body ${JSON.stringify(f.returnExpr)} isn't a simple binary operation — needs a human (or a real model).` };
+  }
+  const [, left, curOp, right] = m;
+  const val = (name: string): number | undefined => {
+    const i = f.params.indexOf(name!);
+    return i >= 0 ? f.args[i] : undefined;
+  };
+  const lv = val(left!);
+  const rv = val(right!);
+  if (lv === undefined || rv === undefined) {
+    return { fixable: false, explanation: `${f.fn}: operands don't map to the call arguments — can't verify a fix.` };
+  }
+  for (const op of Object.keys(OPS)) {
+    if (op !== curOp && OPS[op]!(lv, rv) === f.expected) {
+      const fixedExpr = `${left} ${op} ${right}`;
+      const fixedLine = f.bodyLine.replace(f.returnExpr, fixedExpr);
+      return {
+        fixable: true,
+        fixedLine,
+        was: f.bodyLine,
+        explanation:
+          `${f.fn}(${f.args.join(", ")}) returned ${f.actual} but the test expects ${f.expected}; ` +
+          `changing \`${curOp}\` to \`${op}\` makes it pass.`,
+      };
+    }
+  }
+  return { fixable: false, explanation: `${f.fn}: no single operator swap yields ${f.expected} — the bug is deeper than an operator typo.` };
 }
 
 /** The FACTS block the reviewer embeds to score a proposal. */

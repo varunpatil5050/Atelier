@@ -140,6 +140,7 @@ export async function runScribe(opts: RunOptions): Promise<RunState> {
         runId,
         agent: agentUser.name,
         symbol: hit.name,
+        mode: "insert",
         path: hit.path,
         line: hit.line,
         insertText,

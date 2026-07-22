@@ -19,10 +19,18 @@ export interface Proposal {
   agent: string; // presence name, e.g. "scribe (agent)"
   symbol: string; // the target definition's name — self-describing for reviewers/UI
   path: string;
-  line: number; // 1-based anchor line of the target definition
-  /** Full text the agent wants to insert (already indented, newline-joined). */
+  line: number; // 1-based anchor line
+  /**
+   * How the patch is applied:
+   *  - "insert" (default): insertText is placed ABOVE `line` (the scribe's doc
+   *    comments).
+   *  - "replace": insertText REPLACES the single line `line` (the debugger's
+   *    one-line fixes). targetPreview holds the old line, shown as "was:".
+   */
+  mode?: "insert" | "replace";
+  /** Full text the agent wants to insert (already indented; newline-joined for insert). */
   insertText: string;
-  /** The target definition's first line, for context in the review UI. */
+  /** For insert: the definition's first line. For replace: the old line being replaced. */
   targetPreview: string;
   status: ProposalStatus;
   decidedBy?: string; // human's presence name, set with approved/rejected

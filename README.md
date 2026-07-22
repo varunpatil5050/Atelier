@@ -22,13 +22,15 @@ build log: [PROGRESS.md](PROGRESS.md).
 - **Repository intelligence** (Rust + tree-sitter) — symbol search, a call graph with
   find-references and blast-radius summaries, and hybrid semantic+lexical retrieval (RRF
   fusion with provenance) — all re-indexed live as you type.
-- **Autonomous agents (multi-agent)** — a full Planner→Coder→Tester→Reviewer team joins the
-  room as first-class participants and narrates its reasoning into it. A **planner** turns a
-  free-form goal (`document all`, `document app.ts`) into a plan and delegates to a **scribe**,
-  which proposes reviewable edits gated behind human approval; a **reviewer** independently
-  scores each proposal by call-graph blast radius; a **tester** runs the workspace's code and
-  reports pass/fail into the room. Runs are event-sourced; the scripted model provider spends
-  **zero tokens**, and a real model drops in behind the same interface.
+- **Autonomous agents (a self-correcting team)** — a full Planner→Coder→Tester→Reviewer team,
+  plus a Debugger, joins the room as first-class participants and narrates its reasoning into
+  it. A **planner** turns a free-form goal (`document all`) into a plan and delegates to a
+  **scribe**, which proposes reviewable edits gated behind human approval; a **reviewer** scores
+  each proposal by call-graph blast radius; a **tester** runs the workspace's code and reports
+  pass/fail; and when a test fails, a **debugger** reads the real assertion, proposes a verified
+  fix, and the tester re-runs green — the team writes, tests, and repairs its own code. Runs are
+  event-sourced; the scripted model provider spends **zero tokens**, and a real model drops in
+  behind the same interface.
 - **Replayable timeline** — the relay records every room's history; scrub any session and
   watch the document rebuild moment by moment — keystrokes, agent edits, the agent's own
   reasoning, and who was present, all faithful to that point in time.
@@ -54,7 +56,7 @@ replayable. (Full detail: [BLUEPRINT.md](BLUEPRINT.md) and `docs/01–15`.)
 flowchart LR
   subgraph P["Participants — one binary WS protocol, one client library"]
     IDE["Web IDE<br/>Next.js · Monaco · xterm · Yjs"]
-    AGT["conductor agents<br/>planner · scribe · reviewer · tester"]
+    AGT["conductor agents<br/>planner · scribe · reviewer · tester · debugger"]
     DFS["doc-fs<br/>CRDT ⇄ filesystem"]
   end
 
@@ -151,6 +153,11 @@ doc-fs persists it, the timeline records it, and the event-sourced run log folds
 in replay. Rejecting leaves the document untouched; walking away times the proposal out.
 (For a single symbol, skip the planner: `conductor --goal "document greet"`.)
 
+The loop closes with the **tester** and **debugger**: the tester runs the workspace's command
+and records pass/fail into the room; if it fails, the debugger follows the stack trace to the
+failing assertion, proposes a fix verified against it (through the same review + approval
+gate), and the tester re-runs green — the team writes, tests, and repairs its own code.
+
 ## Quickstart
 
 Requirements: Node ≥ 22, pnpm 9, Go ≥ 1.26.
@@ -193,6 +200,8 @@ pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role reviewe
 pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role planner --goal "document all"
 # tester: runs the workspace's command and reports pass/fail into the room.
 pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role tester --cmd "node test.js" --cwd ./data/workspaces/demo
+# debugger: when a test is failing, reads the assertion and proposes a verified fix.
+pnpm --filter @atelier/conductor exec tsx src/main.ts --room demo --role debugger
 # (--no-approval applies directly, skipping the human gate.)
 ```
 

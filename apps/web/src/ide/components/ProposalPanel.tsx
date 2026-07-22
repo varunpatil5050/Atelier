@@ -18,6 +18,7 @@ interface Proposal {
   runId: string;
   agent: string;
   symbol?: string;
+  mode?: "insert" | "replace";
   path: string;
   line: number;
   insertText: string;
@@ -94,17 +95,20 @@ export default function ProposalPanel({
     <div className="proposal-stack">
       {pending.map((p) => {
         const review = reviews.find((r) => r.proposalId === p.id);
+        const isReplace = p.mode === "replace";
         return (
           <div key={p.id} className="proposal-card">
             <div className="proposal-head">
               <span className="proposal-agent">{p.agent}</span>
               <span className="proposal-target">
-                wants to insert {p.insertText.split("\n").length} lines at {p.path}:{p.line}
+                {isReplace
+                  ? `wants to fix ${p.path}:${p.line}`
+                  : `wants to insert ${p.insertText.split("\n").length} lines at ${p.path}:${p.line}`}
               </span>
             </div>
             <pre className="proposal-code">{p.insertText}</pre>
             <div className="proposal-context">
-              above: <code>{p.targetPreview}</code>
+              {isReplace ? "was:" : "above:"} <code>{p.targetPreview}</code>
             </div>
 
             {review ? (

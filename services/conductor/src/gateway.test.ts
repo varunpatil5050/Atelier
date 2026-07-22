@@ -3,6 +3,8 @@ import {
   ScriptedProvider,
   contentHash,
   parsePlanDirective,
+  type DebugFacts,
+  type DebugOutput,
   type PlanDirective,
   type ReviewFacts,
   type ReviewOutput,
@@ -143,6 +145,64 @@ describe("parsePlanDirective (planner branch)", () => {
     const p = new ScriptedProvider();
     const res = await p.complete({ system: "s", prompt: "plan this\nPLAN_GOAL: document all\ndone" });
     expect(JSON.parse(res.text) as PlanDirective).toEqual({ action: "document", scope: "all" });
+  });
+});
+
+function debugPromptWith(facts: Partial<DebugFacts>): string {
+  const full: DebugFacts = {
+    fn: "add",
+    params: ["a", "b"],
+    args: [2, 3],
+    expected: 5,
+    actual: -1,
+    bodyLine: "  return a - b;",
+    returnExpr: "a - b",
+    ...facts,
+  };
+  return `Fix this.\nDEBUG_FACTS: ${JSON.stringify(full)}\ndone`;
+}
+
+describe("ScriptedProvider — debugger branch", () => {
+  it("repairs an operator bug verified against the assertion", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({ system: "s", prompt: debugPromptWith({}) });
+    const out = JSON.parse(res.text) as DebugOutput;
+    expect(out.fixable).toBe(true);
+    expect(out.fixedLine).toBe("  return a + b;");
+    expect(out.was).toBe("  return a - b;");
+    expect(out.explanation).toContain("changing `-` to `+`");
+  });
+
+  it("finds the right operator among several (multiply)", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({
+      system: "s",
+      prompt: debugPromptWith({ args: [4, 3], expected: 12, actual: 7, bodyLine: "  return a + b;", returnExpr: "a + b" }),
+    });
+    const out = JSON.parse(res.text) as DebugOutput;
+    expect(out.fixable).toBe(true);
+    expect(out.fixedLine).toBe("  return a * b;");
+  });
+
+  it("declines when no single operator swap fits (honest, not a guess)", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({
+      system: "s",
+      prompt: debugPromptWith({ args: [2, 3], expected: 100, actual: 5, bodyLine: "  return a + b;", returnExpr: "a + b" }),
+    });
+    const out = JSON.parse(res.text) as DebugOutput;
+    expect(out.fixable).toBe(false);
+    expect(out.explanation).toContain("deeper than an operator typo");
+  });
+
+  it("declines a non-binary-op body", async () => {
+    const p = new ScriptedProvider();
+    const res = await p.complete({
+      system: "s",
+      prompt: debugPromptWith({ returnExpr: "Math.max(a, b)", bodyLine: "  return Math.max(a, b);" }),
+    });
+    const out = JSON.parse(res.text) as DebugOutput;
+    expect(out.fixable).toBe(false);
   });
 });
 
