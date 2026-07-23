@@ -20,10 +20,19 @@ function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)] as T;
 }
 
-/** Locally-generated identity, used only as the tokenless-mode fallback. */
+/**
+ * Locally-generated identity, used only as the tokenless-mode fallback.
+ *
+ * Stored in sessionStorage, NOT localStorage: sessionStorage is scoped to a
+ * single tab, so each tab is its own participant (own id/name/colour) — open
+ * the same room in two tabs and you get two distinct users, and renaming one
+ * doesn't touch the other. It survives a reload of that tab; a brand-new tab
+ * gets a fresh identity. (localStorage is shared across all of a browser's
+ * tabs, which made every tab the same user.)
+ */
 function localIdentity(): UserInfo {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as UserInfo;
       if (parsed.id && parsed.name && parsed.color) return parsed;
@@ -37,7 +46,7 @@ function localIdentity(): UserInfo {
     color: pick(COLORS),
   };
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
   } catch {
     // private browsing etc. — ephemeral identity is fine
   }
@@ -82,7 +91,7 @@ export function setStoredName(name: string): string | null {
   if (!trimmed) return null;
   try {
     const cur = localIdentity();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cur, name: trimmed }));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cur, name: trimmed }));
   } catch {
     // private browsing — the live awareness update still applies this session
   }
