@@ -1,7 +1,5 @@
 # Atelier
 
-[![CI](https://github.com/varunpatil5050/Atelier/actions/workflows/ci.yml/badge.svg)](https://github.com/varunpatil5050/Atelier/actions/workflows/ci.yml)
-
 **An AI-native collaborative coding platform** — a real-time multiplayer cloud IDE where
 humans and AI agents work in the same live document, backed by repository intelligence,
 full session replay, and shareable preview URLs. Polyglot monorepo: **Go** (collaboration +
@@ -227,10 +225,6 @@ cargo test --manifest-path services/indexer/Cargo.toml   # tree-sitter extractio
 pnpm --filter @atelier/conductor test  # the agent team vs a real relay (planner/scribe/reviewer/tester/debugger)
 pnpm --filter @atelier/web e2e         # Playwright multiplayer harness (boots everything)
 ```
-
-[GitHub Actions CI](.github/workflows/ci.yml) runs all of the above on every push and PR —
-four parallel jobs (Go race · Rust clippy+tests · TypeScript typecheck+units+web build ·
-Playwright e2e), pinned to the repo's toolchain versions.
 
 ## Layout
 
