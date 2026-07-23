@@ -21,42 +21,22 @@ export function agentTraceOf(doc: Y.Doc): AgentStep[] {
   return doc.getArray<AgentStep>(AGENT_TRACE_KEY).toArray();
 }
 
-/** Small visual identity per step kind (icon + accent). */
+/**
+ * A quiet marker per step. Colour is reserved for genuine outcomes — a step's
+ * meaning is carried by its label, not a rainbow of icons. Terminal states get
+ * a single muted semantic colour; everything else is a neutral dot.
+ */
 export function stepBadge(step: string): { icon: string; color: string } {
+  const neutral = "var(--text-faint)";
   switch (step) {
-    case "started":
-      return { icon: "▶", color: "#a855f7" };
-    case "plan":
-      return { icon: "⌖", color: "#6d9eff" };
-    case "delegate":
-      return { icon: "⇢", color: "#f59e0b" };
-    case "run":
-      return { icon: "▷", color: "#38bdf8" };
-    case "test":
-      return { icon: "🧪", color: "#38bdf8" };
-    case "diagnose":
-      return { icon: "🩺", color: "#fb7185" };
-    case "locate":
-      return { icon: "◎", color: "#fb7185" };
-    case "repair":
-      return { icon: "🔧", color: "#fb7185" };
-    case "retrieve":
-      return { icon: "🔍", color: "#14b8a6" };
-    case "generate":
-      return { icon: "✎", color: "#eab308" };
-    case "propose":
-      return { icon: "⏳", color: "#f97316" };
-    case "review":
-      return { icon: "⚖", color: "#2dd4bf" };
-    case "decision":
-      return { icon: "⚖", color: "#22c55e" };
-    case "apply":
-      return { icon: "✓", color: "#22c55e" };
     case "done":
-      return { icon: "●", color: "#22c55e" };
+      return { icon: "●", color: "var(--green)" };
     case "failed":
-      return { icon: "✗", color: "#ef4444" };
+      return { icon: "●", color: "var(--red)" };
+    case "apply":
+    case "decision":
+      return { icon: "•", color: "var(--text-dim)" };
     default:
-      return { icon: "·", color: "#8b93a1" };
+      return { icon: "•", color: neutral };
   }
 }

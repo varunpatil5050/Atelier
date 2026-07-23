@@ -162,7 +162,7 @@ export default function ReplayPlayer({ room }: { room: string }) {
         <span className="replay-badge">◷ replay</span>
         <div className="replay-presence">
           {snapshot.present.map((u) => (
-            <span key={u.id} className="presence-chip" style={{ borderColor: u.color }}>
+            <span key={u.id} className="presence-chip">
               <span className="presence-dot" style={{ background: u.color }} />
               {u.name}
             </span>

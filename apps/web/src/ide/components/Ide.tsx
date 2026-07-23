@@ -279,7 +279,6 @@ export default function Ide({ room }: { room: string }) {
             <span
               key={p.clientId}
               className="presence-chip"
-              style={{ borderColor: p.user.color }}
               title={p.isLocal ? `${p.user.name} (you)` : p.user.name}
             >
               <span className="presence-dot" style={{ background: p.user.color }} />
