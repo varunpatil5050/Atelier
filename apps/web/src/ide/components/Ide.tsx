@@ -7,7 +7,7 @@ import type * as MonacoNs from "monaco-editor";
 import type { UserInfo } from "@atelier/protocol";
 import { WsConnection, type ConnStatus } from "@atelier/client";
 import { AtelierProvider } from "@atelier/client";
-import { resolveRoomAuth, relayWsUrl } from "../identity";
+import { resolveRoomAuth, relayWsUrl, setStoredName, MAX_NAME_LEN } from "../identity";
 import { postRumSample } from "../coreApi";
 import TerminalPane from "./TerminalPane";
 import PreviewPane from "./PreviewPane";
@@ -46,6 +46,7 @@ export default function Ide({ room }: { room: string }) {
   const [peers, setPeers] = useState<Peer[]>([]);
   const [monacoMod, setMonacoMod] = useState<MonacoModule | null>(null);
   const [editorReady, setEditorReady] = useState(false);
+  const [editingName, setEditingName] = useState(false);
 
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<MonacoNs.editor.IStandaloneCodeEditor | null>(null);
@@ -261,6 +262,18 @@ export default function Ide({ room }: { room: string }) {
     setActive(name);
   };
 
+  // Rename yourself: update the live presence identity (broadcasts to every
+  // peer's cursor + roster) and persist it for next time. Keeps id + color.
+  const commitName = (raw: string) => {
+    setEditingName(false);
+    if (!provider) return;
+    const cur = (provider.awareness.getLocalState() as { user?: UserInfo } | null)?.user;
+    if (!cur) return;
+    const name = setStoredName(raw);
+    if (!name || name === cur.name) return;
+    provider.awareness.setLocalStateField("user", { ...cur, name });
+  };
+
   return (
     <div className="ide">
       <style>{cursorCss}</style>
@@ -279,11 +292,28 @@ export default function Ide({ room }: { room: string }) {
             <span
               key={p.clientId}
               className="presence-chip"
-              title={p.isLocal ? `${p.user.name} (you)` : p.user.name}
+              title={p.isLocal ? "Click your name to rename yourself" : p.user.name}
             >
               <span className="presence-dot" style={{ background: p.user.color }} />
-              {p.user.name}
-              {p.isLocal ? " (you)" : ""}
+              {p.isLocal && editingName ? (
+                <input
+                  className="presence-name-input"
+                  defaultValue={p.user.name}
+                  autoFocus
+                  maxLength={MAX_NAME_LEN}
+                  onBlur={(e) => commitName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitName(e.currentTarget.value);
+                    else if (e.key === "Escape") setEditingName(false);
+                  }}
+                />
+              ) : p.isLocal ? (
+                <button className="presence-name-btn" onClick={() => setEditingName(true)}>
+                  {p.user.name} <span className="presence-you">(you)</span>
+                </button>
+              ) : (
+                p.user.name
+              )}
             </span>
           ))}
         </div>

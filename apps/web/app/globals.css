@@ -332,6 +332,32 @@ a {
   border-radius: 50%;
   opacity: 0.9;
 }
+.presence-name-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.presence-name-btn:hover {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.presence-you {
+  color: var(--text-faint);
+}
+.presence-name-input {
+  background: var(--bg-inset);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font: inherit;
+  padding: 1px 6px;
+  width: 11ch;
+  outline: none;
+}
 
 .status-pill {
   display: inline-flex;

@@ -69,6 +69,26 @@ export async function resolveRoomAuth(room: string): Promise<RoomAuth> {
   }
 }
 
+/** Longest display name we accept — keeps cursor labels from overflowing. */
+export const MAX_NAME_LEN = 24;
+
+/**
+ * Persist a chosen display name into the stored local identity so it survives
+ * reloads (tokenless mode). Returns the cleaned name, or null if it was empty.
+ * The live presence update is done separately by the caller (awareness).
+ */
+export function setStoredName(name: string): string | null {
+  const trimmed = name.trim().slice(0, MAX_NAME_LEN);
+  if (!trimmed) return null;
+  try {
+    const cur = localIdentity();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cur, name: trimmed }));
+  } catch {
+    // private browsing — the live awareness update still applies this session
+  }
+  return trimmed;
+}
+
 export function relayWsUrl(): string {
   const base = process.env.NEXT_PUBLIC_RELAY_URL ?? "ws://localhost:8787";
   return `${base.replace(/\/$/, "")}/ws`;
